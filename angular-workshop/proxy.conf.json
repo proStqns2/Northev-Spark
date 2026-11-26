@@ -1,0 +1,9 @@
+{
+  "/rt": {
+    "target": "http://localhost:4100",
+    "secure": false,
+    "changeOrigin": true,
+    "ws": true,
+    "pathRewrite": { "^/rt": "" }
+  }
+}

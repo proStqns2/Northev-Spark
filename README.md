@@ -104,6 +104,46 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 
 ---
 
+## Trois couches techniques
+
+| Couche | Rôle | Dossier | Port |
+|---|---|---|---|
+| **Next.js 15** | site, studio, moteur de calcul, projets, API REST | `app/`, `lib/`, `components/` | 3000 |
+| **Node.js** | serveur temps réel autonome (WebSocket natif, zéro dépendance) | `server/` | 4100 |
+| **Angular 20** | atelier collaboratif (signals, zoneless) | `angular-workshop/` | 4300 |
+
+Le serveur Node est indépendant : il ne calcule rien, il synchronise (curseurs,
+présence, chat, révisions). Next.js et Angular sont deux clients du même protocole.
+
+```bash
+node server/realtime.mjs         # temps réel (ws://localhost:4100)
+npm run dev                      # Next.js  → http://localhost:3000
+cd angular-workshop && npm i && npm start   # Angular → http://localhost:4300
+```
+
+Le serveur Node expose aussi une API de secours sans WebSocket :
+`GET /health`, `GET|POST /api/rooms`, `GET|PATCH|DELETE /api/rooms/:code`,
+`POST /api/rooms/:code/presence`, `POST /api/rooms/:code/chat`.
+
+### Symboles normalisés
+
+Les captures de référence de la branche `assets/screenshots/` (bobine L,
+résistance R, condensateur C, source E, source i) ont été copiées dans
+`public/symbols/reference/` et servent de modèle à
+`components/studio/symbols/NormSymbol.tsx` :
+
+- résistance = **rectangle** CEI (et non zigzag), bobine = 4 arches + noyau,
+  condensateur = deux armatures, source de courant = cercle + flèche traversante ;
+- le même dessin sert dans la palette **Build Box**, sur la grille, dans les
+  exports PNG/SVG/HTML (`lib/studio/symbolSvg.ts`) et dans le client Angular ;
+- la page `/symboles` présente chaque capture à côté de sa version vectorielle.
+
+La palette **Build Box** (`components/studio/BuildBox.tsx`) reprend la mise en
+page du manuel : groupes titrés (Essentiels, Sources idéales, Éléments passifs,
+Sources de signal, Charge & réglage) et tuiles carrées à grand symbole.
+
+---
+
 ## Comptes & multiwork
 
 - Mots de passe hachés **scrypt** (`N=16384, r=8, p=1`) + sel aléatoire ; comparaison à temps constant.
@@ -157,6 +197,7 @@ app/                    pages (App Router) + routes API
   api/circuits/*        historique CRUD + favoris + synchro cloud
   api/rooms/*           ateliers multiwork, présence, curseurs, chat, SSE
   api/projects/*        projets, membres, rattachement de montages
+  projets/ symboles/    pages projets et bibliothèque de symboles
   api/ai                hub d'agents (local / OpenAI / Gemini)
   api/import, solve      import texte/JSON, calcul serveur
 components/
@@ -171,6 +212,9 @@ lib/
   ai/                   définitions d'agents, moteur local, fournisseurs
   db/                   store JSON, dépôt, Supabase
   auth/                 scrypt, sessions, thèmes
+server/                 serveur temps réel Node (WebSocket natif + API REST)
+angular-workshop/       client Angular de l'atelier collaboratif
+public/symbols/         captures de référence des symboles du cours
 supabase/schema.sql     schéma complet (tables, index, triggers, RLS)
 scripts/                vérification moteur + seed démo
 ```

@@ -12,19 +12,19 @@ const stroke = (color: string, w = 2.1) =>
 
 export const SYMBOL_SVG: Record<ComponentKind, (color: string) => string> = {
   resistor: (c) =>
-    `${LEADS(c)}<polyline points="-22,0 -19,-8 -13,8 -7,-8 -1,8 5,-8 11,8 15,-6 18,0 22,0" ${stroke(c)} stroke-linejoin="round"/>`,
+    `${LEADS(c)}<rect x="-22" y="-9" width="44" height="18" rx="1.5" ${stroke(c)}/>`,
   potentiometer: (c) =>
-    `${LEADS(c)}<polyline points="-22,0 -19,-8 -13,8 -7,-8 -1,8 5,-8 11,8 15,-6 18,0 22,0" ${stroke(c)} stroke-linejoin="round"/><line x1="0" y1="-8" x2="10" y2="-20" ${stroke(c)}/><path d="M 10 -20 l 5 2 l -3 4 z" fill="${c}"/>`,
+    `${LEADS(c)}<rect x="-22" y="-9" width="44" height="18" rx="1.5" ${stroke(c)}/><line x1="0" y1="-9" x2="13" y2="-22" ${stroke(c)} stroke-width="1.6"/><path d="M 13 -22 l 6 1 l -2 5 z" fill="${c}"/>`,
   capacitor: (c) =>
-    `${LEADS(c)}<line x1="-5" y1="-14" x2="-5" y2="14" ${stroke(c)}/><line x1="5" y1="-14" x2="5" y2="14" ${stroke(c)}/>`,
+    `${LEADS(c)}<line x1="-4" y1="-15" x2="-4" y2="15" ${stroke(c)}/><line x1="4" y1="-15" x2="4" y2="15" ${stroke(c)}/>`,
   inductor: (c) =>
-    `${LEADS(c)}<path d="M -22 0 q 5.5 -13 11 0 q 5.5 -13 11 0 q 5.5 -13 11 0 q 5.5 -13 11 0" ${stroke(c)}/>`,
+    `${LEADS(c)}<path d="M -22 0 a 5.5 5.5 0 0 1 11 0 a 5.5 5.5 0 0 1 11 0 a 5.5 5.5 0 0 1 11 0 a 5.5 5.5 0 0 1 11 0" ${stroke(c)}/><line x1="-20" y1="-13" x2="20" y2="-13" ${stroke(c)} stroke-width="1.3" opacity="0.55"/><line x1="-20" y1="13" x2="20" y2="13" ${stroke(c)} stroke-width="1.3" opacity="0.55"/>`,
   lamp: (c) =>
     `${LEADS(c)}<circle cx="0" cy="0" r="14" ${stroke(c)}/><line x1="-10" y1="-10" x2="10" y2="10" ${stroke(c)}/><line x1="-10" y1="10" x2="10" y2="-10" ${stroke(c)}/>`,
   vsource: (c) =>
-    `${LEADS(c)}<circle cx="0" cy="0" r="16" ${stroke(c)}/><line x1="0" y1="-8" x2="0" y2="8" ${stroke(c)}/><line x1="-8" y1="0" x2="8" y2="0" ${stroke(c)}/>`,
+    `${LEADS(c)}<circle cx="0" cy="0" r="17" ${stroke(c)}/><line x1="0" y1="-8" x2="0" y2="8" ${stroke(c)}/><line x1="-8" y1="0" x2="8" y2="0" ${stroke(c)}/>`,
   isource: (c) =>
-    `${LEADS(c)}<circle cx="0" cy="0" r="16" ${stroke(c)}/><line x1="0" y1="10" x2="0" y2="-8" ${stroke(c)}/><path d="M -5 -6 L 0 -10 L 5 -6" ${stroke(c)}/>`,
+    `${LEADS(c)}<circle cx="0" cy="0" r="17" ${stroke(c)}/><line x1="0" y1="26" x2="0" y2="-26" ${stroke(c)} stroke-width="1.5" opacity="0.85"/><path d="M -6 -19 L 0 -27 L 6 -19" ${stroke(c)} stroke-width="1.8"/>`,
   vcvs: (c) =>
     `${LEADS(c)}<path d="M -16 -14 L 16 -14 L 0 16 Z" ${stroke(c)} stroke-linejoin="round"/><text x="0" y="-1" text-anchor="middle" font-size="11" fill="${c}" font-family="monospace">μ</text>`,
   vccs: (c) =>

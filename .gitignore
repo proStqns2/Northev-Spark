@@ -26,3 +26,8 @@ yarn-debug.log*
 yarn-error.log*
 .vercel
 *.tsbuildinfo
+
+# app angular de l'atelier
+/angular-workshop/node_modules
+/angular-workshop/dist
+/angular-workshop/.angular

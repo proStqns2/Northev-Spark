@@ -29,6 +29,7 @@ import { formatSI, formatPhasor } from '@/lib/engine/format';
 import { abs } from '@/lib/engine/complex';
 import { CircuitCanvas, Tool } from './CircuitCanvas';
 import { Palette } from './Palette';
+import { BuildBox } from './BuildBox';
 import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
 import { useStudio } from '@/hooks/useStudio';
@@ -90,6 +91,7 @@ export function StudioShell({
   collaboration,
 }: Props) {
   const studio = useStudio(initialDoc);
+  const [boxMode, setBoxMode] = useState<'build' | 'compact'>('build');
   const [projectId, setProjectId] = useState<string | undefined>(initialProjectId);
   const { doc, setDoc, selected, selectedId, setSelectedId } = studio;
   const { equivalent, solution } = useCircuitEngine(doc);
@@ -504,15 +506,50 @@ export function StudioShell({
       {/* ------------------------------------------------------------- workspace */}
       <div className="flex min-h-0 flex-1">
         {/* palette */}
-        <aside className="hidden w-[196px] shrink-0 border-r border-line/60 bg-ink-900/40 lg:block">
-          <Palette
-            onPick={(kind) => setTool({ mode: 'place', kind })}
-            activeKind={tool.mode === 'place' ? tool.kind : null}
-            onTerminal={(which) => setTool({ mode: 'terminal', which })}
-            onGround={() => setTool({ mode: 'ground' })}
-            onErase={() => setTool({ mode: 'erase' })}
-            toolMode={tool.mode}
-          />
+        <aside className="hidden w-[210px] shrink-0 border-r border-line/60 bg-ink-900/40 lg:flex lg:flex-col">
+          <div className="flex shrink-0 gap-1 border-b border-line/50 p-1.5">
+            <button
+              type="button"
+              onClick={() => setBoxMode('build')}
+              className={cn(
+                'flex-1 rounded-md px-1.5 py-1 text-[10px] font-medium transition',
+                boxMode === 'build' ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
+              )}
+            >
+              Build Box
+            </button>
+            <button
+              type="button"
+              onClick={() => setBoxMode('compact')}
+              className={cn(
+                'flex-1 rounded-md px-1.5 py-1 text-[10px] font-medium transition',
+                boxMode === 'compact' ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
+              )}
+            >
+              Compacte
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            {boxMode === 'build' ? (
+              <BuildBox
+                onPick={(kind) => setTool({ mode: 'place', kind })}
+                activeKind={tool.mode === 'place' ? tool.kind : null}
+                onTerminal={(which) => setTool({ mode: 'terminal', which })}
+                onGround={() => setTool({ mode: 'ground' })}
+                onErase={() => setTool({ mode: 'erase' })}
+                toolMode={tool.mode}
+              />
+            ) : (
+              <Palette
+                onPick={(kind) => setTool({ mode: 'place', kind })}
+                activeKind={tool.mode === 'place' ? tool.kind : null}
+                onTerminal={(which) => setTool({ mode: 'terminal', which })}
+                onGround={() => setTool({ mode: 'ground' })}
+                onErase={() => setTool({ mode: 'erase' })}
+                toolMode={tool.mode}
+              />
+            )}
+          </div>
         </aside>
 
         {/* canvas */}
@@ -664,7 +701,7 @@ export function StudioShell({
           </div>
           <div className="h-[calc(65vh-44px)] overflow-y-auto">
             {mobilePanel === 'palette' ? (
-              <Palette
+              <BuildBox
                 onPick={(kind) => {
                   setTool({ mode: 'place', kind });
                   setMobilePanel('none');

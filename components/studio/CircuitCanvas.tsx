@@ -13,6 +13,7 @@ import {
   } from '@/lib/studio/geometry';
 import { addComponent, moveComponent, removeComponent } from '@/lib/studio/doc';
 import { SymbolDefs, SymbolGlyph, KIND_COLORS } from './Symbols';
+import { NormSymbol, NormSymbolDefs } from './symbols/NormSymbol';
 import { ElectronFlow, WireGlow } from './ElectronFlow';
 import type { Reading } from '@/lib/engine/solver';
 import { cn } from '@/lib/utils';
@@ -472,6 +473,7 @@ export function CircuitCanvas({
         onContextMenu={(e) => e.preventDefault()}
       >
         <SymbolDefs />
+        <NormSymbolDefs />
         <defs>
           <pattern id="grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
             <path d={`M ${GRID} 0 L 0 0 0 ${GRID}`} fill="none" stroke="rgb(var(--grid-color) / 0.11)" strokeWidth="1" />
@@ -515,7 +517,7 @@ export function CircuitCanvas({
                 style={{ pointerEvents: 'all' }}
               >
                 <rect x={-50} y={-22} width={100} height={44} fill="transparent" />
-                <SymbolGlyph kind={c.kind} color={color} closed={c.closed} selected={selected} />
+                <NormSymbol kind={c.kind} color={color} closed={c.closed} glow={selected ? 1 : 0} />
               </g>
 
               {showFlow ? (
@@ -618,7 +620,7 @@ export function CircuitCanvas({
                   Math.max(draftRect.w, draftRect.h) / 100
                 })`}
               >
-                <SymbolGlyph kind={tool.kind} color={KIND_COLORS[tool.kind]} />
+                <NormSymbol kind={tool.kind} color={KIND_COLORS[tool.kind]} />
               </g>
             ) : null}
           </g>
@@ -755,7 +757,7 @@ export function CircuitThumbnail({
         const angle = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
         return (
           <g key={c.id} transform={`translate(${mid.x} ${mid.y}) rotate(${angle}) scale(${length / 100})`}>
-            <SymbolGlyph kind={c.kind} color={KIND_COLORS[c.kind] ?? '#8fa6c4'} />
+            <NormSymbol kind={c.kind} color={KIND_COLORS[c.kind] ?? '#8fa6c4'} />
           </g>
         );
       })}

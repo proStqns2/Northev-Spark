@@ -1,0 +1,25 @@
+{
+  "name": "northev-spark-workshop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Atelier de collaboration Northev Spark — client Angular 20 du serveur temps réel Node",
+  "scripts": {
+    "start": "ng serve --port 4300 --host 0.0.0.0",
+    "build": "ng build",
+    "proxy": "node --watch ../server/realtime.mjs"
+  },
+  "dependencies": {
+    "@angular/common": "^20.0.0",
+    "@angular/compiler": "^20.0.0",
+    "@angular/core": "^20.0.0",
+    "@angular/forms": "^20.0.0",
+    "@angular/platform-browser": "^20.0.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^20.0.0",
+    "@angular/cli": "^20.0.0",
+    "@angular/compiler-cli": "^20.0.0",
+    "typescript": "~5.8.0"
+  }
+}
