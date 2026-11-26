@@ -25,6 +25,21 @@ Construit avec **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS** et 
 - **Animation des électrons** : la vitesse et le sens dérivent du courant réellement calculé (`offset-path` SVG, désactivé si `prefers-reduced-motion`).
 - **Barre de droite** : réglage fin de chaque dipôle (valeur, régime sinusoïdal amplitude/fréquence/phase, gain des sources liées, interrupteur ouvert/fermé).
 - **Barre de résultats** : `U_th`, `Z_th`, `I_N`, puissance maximale transférable, démarche en 6 étapes, superposition, réduction série/parallèle, tableau U/I/P par branche.
+- **Schémas équivalents** : Thévenin et Norton dessinés en SVG, avec une charge `R_L` réglable (0,1 Ω → 1 MΩ) qui affiche `U_L`, `I_L` et `P_L` et signale le transfert maximal quand `R_L ≈ |Z_th|`.
+
+#### Raccourcis du canvas
+
+| Touche | Action |
+|---|---|
+| molette | zoom centré sur le curseur |
+| `Alt` + glisser, bouton du milieu | déplacer la vue |
+| `R` | pivoter le dipôle sélectionné (0° → 90° → 180° → 270°) |
+| `F` | retourner le dipôle (permuter A et B) |
+| `Suppr` / `Retour arrière` | effacer la sélection |
+| `Ctrl+Z` / `Ctrl+Y` | annuler / rétablir |
+| `A`, `B`, `M` | poser la borne A, la borne B, la masse |
+| `V`, `E` | outil sélection, outil gomme |
+| `Ctrl+S` | enregistrer le montage |
 
 ### Le moteur (`lib/engine/`)
 
@@ -72,8 +87,11 @@ npx tsx scripts/seed-demo.ts
 ### Vérifier le moteur
 
 ```bash
-npx tsx scripts/verify-engine.ts
+npx tsx scripts/verify-engine.ts   # 8 cas analytiques (npm run verify)
+npm test                           # 16 tests unitaires
 ```
+
+`npm test` couvre le solveur MNA (diviseur, Wheatstone, superposition, RC/RLC en alternatif), le simulateur de charge `R_L`, les messages du canal multi-onglets et le rendu SSR des schémas équivalents.
 
 ---
 
@@ -220,6 +238,20 @@ Chaque participant voit le curseur des autres se déplacer **en direct et interp
 
 Détails : le serveur ne renvoie les curseurs que si leur signature a changé (~9 Hz), masque les curseurs inactifs depuis 12 s, et pousse un `heartbeat` toutes les 15 s. Le client dessine les curseurs distants au-dessus du canvas (`CursorOverlay`) avec pastille de nom colorée, et publie son propre pointeur converti en cellules par `getScreenCTM()`.
 
+### Collaboration entre onglets (sans serveur)
+
+Ouvrir le studio dans deux onglets suffit à tester le mode Multiworks : `hooks/useMultiTab.ts` relie les onglets par **BroadcastChannel** (`lib/collab/channel.ts`), sans compte ni réseau.
+
+| Message | Effet |
+|---|---|
+| `doc` | le montage entier est répliqué dans les autres onglets (garde-fou anti-boucle) |
+| `lock` | verrou souple `lockedBy` : le composant en cours d'édition est encadré en pointillés chez les autres, avec le nom de l'éditeur |
+| `activity` | journal d'activité (« Ryad ajoute R1 », « règle R1 → 2,2 kΩ ») |
+| `cursor` | curseur nommé, diffusé à ~10 Hz, purgé après 4 s de silence |
+| `bye` | fermeture de l'onglet : curseurs et verrous sont retirés |
+
+La présence serveur (SSE) et les onglets locaux se cumulent : les curseurs distants et locaux sont fusionnés dans le même overlay.
+
 ### Projets
 
 Un projet regroupe plusieurs montages, ses membres et ses ateliers.
@@ -260,9 +292,12 @@ components/
   studio/cursors/       PerfectCursor (spline) + CursorOverlay (curseurs distants)
   studio/               canvas SVG, palette, inspecteur, résultats
 hooks/useCollaboration.ts  présence + curseurs temps réel (SSE, repli polling)
+hooks/useMultiTab.ts       collaboration entre onglets (BroadcastChannel)
   marketing/            vignettes néon de la bibliothèque
 lib/
   engine/               types, complex, linalg, solver, equivalent, reduce, format
+  engine/load.ts        charge R_L branchée sur l'équivalent (U_L, I_L, P_L)
+  collab/channel.ts     messages BroadcastChannel (doc, lock, activity, cursor)
   studio/               géométrie de grille, doc, export, symboles SVG
   ai/                   définitions d'agents, moteur local, fournisseurs
   db/                   store JSON, dépôt, Supabase

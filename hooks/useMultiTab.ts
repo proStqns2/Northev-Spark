@@ -116,6 +116,13 @@ export function useMultiTabSync(options: {
           peers.delete(msg.sender);
           setPeerCount(peers.size);
           setRemoteCursors((prev) => prev.filter((c) => c.sender !== msg.sender));
+          setLocks((prev) => {
+            const next = { ...prev };
+            for (const key of Object.keys(next)) {
+              if (next[key].userId === msg.sender) delete next[key];
+            }
+            return next;
+          });
           break;
         }
       }
@@ -155,12 +162,13 @@ export function useMultiTabSync(options: {
         ? { componentId, userId: senderId, userName, color }
         : null;
       postMessage(channelRef.current, { kind: 'lock', lock, sender: senderId });
+      // on ne conserve que les verrous des autres onglets : le sien ne
+      // s'affiche pas sur son propre canvas
       setLocks((prev) => {
         const next = { ...prev };
         for (const key of Object.keys(next)) {
           if (next[key].userId === senderId) delete next[key];
         }
-        if (lock) next[componentId as string] = lock;
         return next;
       });
     },

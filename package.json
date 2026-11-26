@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "api": "tsx server/api/index.ts",
     "api:watch": "tsx watch server/api/index.ts",
-    "test": "tsx --test lib/engine/solver.test.ts components/studio/equivalent.render.test.tsx",
+    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts components/studio/equivalent.render.test.tsx",
     "verify": "tsx scripts/verify-engine.ts"
   },
   "dependencies": {

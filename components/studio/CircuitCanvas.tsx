@@ -55,6 +55,8 @@ interface Props {
   }) => void;
   /** diffusion du curseur aux autres onglets (BroadcastChannel) */
   onTabCursor?: (x: number, y: number) => void;
+  /** verrous souples des autres onglets, par identifiant de composant */
+  locks?: Record<string, { userName: string; color: string }>;
   showPresencePills?: boolean;
   /** valeur à appliquer au prochain dipôle posé (saisie dans le panneau Valeurs) */
   nextValue?: number;
@@ -79,6 +81,7 @@ export function CircuitCanvas({
   localId = '',
   onCursorMove,
   onTabCursor,
+  locks = {},
   showPresencePills = false,
   nextValue,
 }: Props) {
@@ -574,6 +577,34 @@ export function CircuitCanvas({
                 <NormSymbol kind={c.kind} color={color} closed={c.closed} glow={selected ? 1 : 0} />
               </g>
 
+              {locks[c.id] ? (
+                <g pointerEvents="none">
+                  <rect
+                    x={Math.min(p1.x, p2.x) - 8}
+                    y={Math.min(p1.y, p2.y) - 8}
+                    width={Math.abs(p2.x - p1.x) + 16}
+                    height={Math.abs(p2.y - p1.y) + 16}
+                    rx={6}
+                    fill="none"
+                    stroke={locks[c.id].color}
+                    strokeWidth={1.4}
+                    strokeDasharray="4 3"
+                    opacity={0.75}
+                  />
+                  <text
+                    x={mid.x}
+                    y={mid.y - 26}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fontFamily="var(--font-mono)"
+                    fill={locks[c.id].color}
+                    opacity={0.9}
+                  >
+                    {locks[c.id].userName}
+                  </text>
+                </g>
+              ) : null}
+
               {showFlow ? (
                 <ElectronFlow
                   from={p1}
@@ -769,6 +800,8 @@ export function CircuitCanvas({
         <span className="chip bg-ink-950/80 backdrop-blur">molette : zoom</span>
         <span className="chip bg-ink-950/80 backdrop-blur">alt + glisser : déplacer</span>
         <span className="chip bg-ink-950/80 backdrop-blur">suppr : effacer</span>
+        <span className="chip bg-ink-950/80 backdrop-blur">r : pivoter</span>
+        <span className="chip bg-ink-950/80 backdrop-blur">ctrl+z : annuler</span>
       </div>
       <div className="absolute right-3 top-3 flex flex-col gap-1.5">
         <button

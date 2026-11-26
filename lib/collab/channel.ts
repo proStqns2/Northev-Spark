@@ -39,7 +39,7 @@ export type CollabMessage =
 const CHANNEL_NAME = 'northev-collab';
 
 export function openChannel(): BroadcastChannel | null {
-  if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return null;
+  if (typeof BroadcastChannel === 'undefined') return null;
   try {
     return new BroadcastChannel(CHANNEL_NAME);
   } catch {

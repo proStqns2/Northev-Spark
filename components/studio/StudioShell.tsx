@@ -226,6 +226,34 @@ export function StudioShell({
     [setDoc, mode, onDocChange],
   );
 
+  /* -------------------------------------- verrou souple du composant édité */
+  useEffect(() => {
+    multiTab.setLock(selectedId);
+  }, [selectedId, multiTab.setLock]);
+
+  /* ------------------------------------- journal d'activité (multi-onglets) */
+  const previousDoc = useRef<CircuitDoc | null>(null);
+  const logActivity = multiTab.logActivity;
+  useEffect(() => {
+    const before = previousDoc.current;
+    previousDoc.current = doc;
+    if (!before) return;
+    const beforeMap = new Map(before.components.map((c) => [c.id, c]));
+    const afterMap = new Map(doc.components.map((c) => [c.id, c]));
+
+    for (const [id, component] of afterMap) {
+      const previous = beforeMap.get(id);
+      if (!previous) {
+        logActivity(`ajoute ${component.label ?? id}`);
+      } else if (previous.value !== component.value) {
+        logActivity(`règle ${component.label ?? id} → ${formatSI(component.value, component.kind === 'resistor' ? 'Ω' : '')}`);
+      }
+    }
+    for (const [id, component] of beforeMap) {
+      if (!afterMap.has(id)) logActivity(`supprime ${component.label ?? id}`);
+    }
+  }, [doc, logActivity]);
+
   /* --------------------------------------------- description de l'activité */
   const activity = useMemo(() => {
     if (selected) {
@@ -688,8 +716,29 @@ export function StudioShell({
               localId={user?.id ?? ''}
               onCursorMove={collaboration ? onCursorMove : undefined}
               onTabCursor={multiTab.publishCursor}
+              locks={multiTab.locks}
               showPresencePills={Boolean(collaboration)}
             />
+            {multiTab.activity.length > 0 ? (
+              <div className="pointer-events-none absolute bottom-3 right-3 z-10 w-[210px] rounded-lg border border-line/60 bg-ink-950/85 p-2 backdrop-blur">
+                <p className="mb-1 flex items-center justify-between gap-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-fg-mute">
+                  <span className="flex items-center gap-1">
+                    <Users size={10} /> Activité
+                  </span>
+                  <span className="font-mono normal-case tracking-normal text-spark-cyan">
+                    {multiTab.peerCount} pair{multiTab.peerCount > 1 ? 's' : ''}
+                  </span>
+                </p>
+                <ul className="space-y-0.5">
+                  {multiTab.activity.slice(-4).reverse().map((entry) => (
+                    <li key={entry.id} className="truncate text-[10px] leading-snug text-fg-soft">
+                      <span className="font-semibold text-spark-cyan">{entry.userName}</span> {entry.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {!writeEnabled ? (
               <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-spark-amber/40 bg-ink-950/90 px-3 py-1.5 text-[11px] text-spark-amber backdrop-blur">
                 Lecture seule — l’hôte de l’atelier contrôle le montage
