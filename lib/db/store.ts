@@ -55,6 +55,40 @@ export interface StoredCircuit {
     regime: 'dc' | 'ac';
   };
   collaborators: string[];
+  /** appartenance à un projet (regroupement d'ateliers et de montages) */
+  projectId?: string;
+}
+
+export interface CursorState {
+  /** coordonnées dans la grille (cellules) */
+  x: number;
+  y: number;
+  /** zone approximative du viewport, en cellules (0 → 1) pour le mini-map */
+  vx?: number;
+  vy?: number;
+  vw?: number;
+  vh?: number;
+  /** nœud survolé / composant actif */
+  hover?: string | null;
+  /** outil actif de l'utilisateur */
+  tool?: string;
+  /** horodatage côté client (ms) */
+  at: number;
+}
+
+export interface PresenceRecord {
+  id?: string;
+  name: string;
+  avatar: string;
+  color: string;
+  at: string;
+  cursor?: CursorState;
+  /** curseur masqué par l'utilisateur */
+  idle?: boolean;
+  /** dernière action lisible : « déplace R₁ », « trace un fil »… */
+  activity?: string;
+  /** horodatage serveur de la dernière mise à jour de présence */
+  seenAt?: number;
 }
 
 export interface StoredRoom {
@@ -66,10 +100,27 @@ export interface StoredRoom {
   doc: unknown;
   createdAt: string;
   updatedAt: string;
-  presence: Record<string, { name: string; avatar: string; color: string; at: string }>;
+  presence: Record<string, PresenceRecord>;
   revision: number;
   messages: Array<{ id: string; authorId: string; authorName: string; text: string; at: string }>;
   closed: boolean;
+  /** projet auquel l'atelier est rattaché */
+  projectId?: string;
+  /** numéro de la version des curseurs (ne force pas la persistance disque) */
+  presenceRev?: number;
+}
+
+export interface StoredProject {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+  ownerId: string;
+  members: Array<{ id: string; name: string; color: string; role: 'owner' | 'editor' | 'viewer' }>;
+  createdAt: string;
+  updatedAt: string;
+  archived: boolean;
 }
 
 export interface DB {
@@ -77,6 +128,7 @@ export interface DB {
   sessions: SessionRecord[];
   circuits: StoredCircuit[];
   rooms: StoredRoom[];
+  projects: StoredProject[];
   meta: { schema: number; createdAt: string };
 }
 
@@ -85,7 +137,8 @@ const EMPTY: DB = {
   sessions: [],
   circuits: [],
   rooms: [],
-  meta: { schema: 1, createdAt: new Date().toISOString() },
+  projects: [],
+  meta: { schema: 2, createdAt: new Date().toISOString() },
 };
 
 const globalForDb = globalThis as unknown as {
@@ -113,6 +166,7 @@ async function readDb(): Promise<DB> {
     parsed.sessions ??= [];
     parsed.circuits ??= [];
     parsed.rooms ??= [];
+    parsed.projects ??= [];
     globalForDb.__northevDb = parsed;
     return parsed;
   } catch {
@@ -146,6 +200,34 @@ export function transaction<T>(fn: (db: DB) => Promise<T> | T): Promise<T> {
   return next;
 }
 
+/**
+ * Mutation immédiate, en mémoire, sans écriture disque.
+ * Réservée aux données très fréquentes (curseurs, présence) : le disque
+ * serait saturé par 10 écritures par seconde et par participant.
+ */
+export async function mutateVolatile<T>(fn: (db: DB) => T): Promise<T> {
+  const db = await readDb();
+  return fn(db);
+}
+
+/** Écriture différée (debounce) pour les données chaudes mais persistables. */
+const pendingWrites = new Map<string, NodeJS.Timeout>();
+
+export function schedulePersist(key: string, delayMs = 4000): void {
+  const existing = pendingWrites.get(key);
+  if (existing) clearTimeout(existing);
+  pendingWrites.set(
+    key,
+    setTimeout(() => {
+      pendingWrites.delete(key);
+      void (async () => {
+        const db = await readDb();
+        await persist(db);
+      })();
+    }, delayMs),
+  );
+}
+
 export async function snapshot<T>(fn: (db: DB) => T): Promise<T> {
   const db = await readDb();
   return fn(db);
@@ -157,5 +239,6 @@ export async function resetDemoData(): Promise<void> {
     db.sessions = [];
     db.circuits = [];
     db.rooms = [];
+    db.projects = [];
   });
 }

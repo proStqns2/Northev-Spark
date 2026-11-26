@@ -21,6 +21,7 @@ export async function GET() {
         circuitId: r.circuitId,
         ownerId: r.ownerId,
         ownerName: r.ownerName,
+        projectId: r.projectId,
         participants: Object.values(r.presence),
         revision: r.revision,
         updatedAt: r.updatedAt,
@@ -75,12 +76,14 @@ export async function POST(request: Request) {
     name: parsed.data.name,
     circuitId,
     doc,
+    projectId: parsed.data.projectId,
   });
   return NextResponse.json(
     {
       code: room.code,
       name: room.name,
       circuitId: room.circuitId,
+      projectId: room.projectId,
       revision: room.revision,
       createdAt: room.createdAt,
     },

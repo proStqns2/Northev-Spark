@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -27,16 +27,25 @@ import {
 import Link from 'next/link';
 import { CircuitDoc } from '@/lib/engine/types';
 import { StudioShell } from '@/components/studio/StudioShell';
+import { useCollaboration, type LiveCursor, type LiveParticipant } from '@/hooks/useCollaboration';
 import { sanitizeDoc } from '@/lib/studio/doc';
 import { TileGlyph } from '@/components/marketing/TileGlyph';
 import { cn, timeAgo } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
+
+interface ProjectOption {
+  id: string;
+  name: string;
+  color: string;
+  rooms: Array<{ code: string; name: string; participants: number }>;
+}
 
 interface RoomSummary {
   code: string;
   name: string;
   ownerName: string;
   ownerId: string;
+  projectId?: string;
   participants: Array<{ id: string; name: string; color: string }>;
   revision: number;
   updatedAt: string;
@@ -46,6 +55,7 @@ interface Props {
   user: { id: string; name: string; avatar: string };
   initialCode: string | null;
   rooms: RoomSummary[];
+  projects: ProjectOption[];
   templates: Array<{
     slug: string;
     title: string;
@@ -58,26 +68,30 @@ interface Props {
 
 type Phase = 'lobby' | 'creating' | 'joined';
 
-export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
+export function MultiworkHub({ user, initialCode, rooms, projects, templates }: Props) {
   const [phase, setPhase] = useState<Phase>(initialCode ? 'joined' : 'lobby');
   const [code, setCode] = useState(initialCode ?? '');
   const [joining, setJoining] = useState(false);
   const [doc, setDoc] = useState<CircuitDoc | null>(null);
   const [roomName, setRoomName] = useState('');
   const [ownerId, setOwnerId] = useState<string>('');
-  const [participants, setParticipants] = useState<Array<{ id: string; name: string; color: string }>>([]);
-  const [messages, setMessages] = useState<
+  const [initialMessages, setInitialMessages] = useState<
     Array<{ id: string; authorId: string; authorName: string; text: string; at: string }>
   >([]);
-  const [connected, setConnected] = useState(false);
-  const [revision, setRevision] = useState(0);
   const [chatOpen, setChatOpen] = useState(true);
   const [chatText, setChatText] = useState('');
   const [newRoomTemplate, setNewRoomTemplate] = useState(templates[0]?.slug ?? '');
   const [newRoomName, setNewRoomName] = useState('');
+  const [newRoomProject, setNewRoomProject] = useState('');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
   const [creating, setCreating] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const pushedDocRef = useRef<string>('');
+  const revisionRef = useRef(0);
+  const [revision, setRevision] = useState(0);
+  const setRevisionRef = useCallback((value: number) => {
+    revisionRef.current = value;
+    setRevision(value);
+  }, []);
   const { success, error, info } = useToast();
   const router = useRouter();
 
@@ -90,9 +104,8 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
       setDoc(sanitizeDoc(payload.doc as CircuitDoc));
       setRoomName(payload.name);
       setOwnerId(payload.ownerId);
-      setParticipants(payload.participants);
-      setMessages(payload.messages ?? []);
-      setRevision(payload.revision);
+      setInitialMessages(payload.messages ?? []);
+      setRevisionRef(payload.revision);
       setCode(target);
       setPhase('joined');
       if (!opts.silent) success('Atelier rejoint', `Code ${target} · ${payload.participants.length} participant(s).`);
@@ -109,85 +122,42 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------------------------------------------ SSE */
-  useEffect(() => {
-    if (phase !== 'joined' || !code) return;
-    const source = new EventSource(`/api/rooms/${code}/events`);
-    eventSourceRef.current = source;
+  /* --------------------------------------------------------- collaboration */
+  const collaboration = useCollaboration({
+    code: phase === 'joined' ? code : null,
+    enabled: phase === 'joined' && Boolean(code),
+    localId: user.id,
+    onRemoteDoc: (remote, meta) => {
+      setDoc(sanitizeDoc(remote));
+      setRevision(meta.revision);
+      if (meta.author) info(`Mise à jour de ${meta.author}`, 'Le montage distant a été appliqué.');
+    },
+  });
 
-    source.addEventListener('ready', () => setConnected(true));
-    source.addEventListener('presence', (event) => {
-      const data = JSON.parse((event as MessageEvent).data) as {
-        participants: Array<{ id: string; name: string; color: string }>;
-      };
-      setParticipants(data.participants);
-    });
-    source.addEventListener('revision', (event) => {
-      const data = JSON.parse((event as MessageEvent).data) as {
-        revision: number;
-        messages: Array<{ id: string; authorId: string; authorName: string; text: string; at: string }>;
-      };
-      setRevision((current) => {
-        if (data.revision === current) return current;
-        void pullRoom();
-        return data.revision;
-      });
-      if (data.messages?.length) {
-        setMessages((current) => {
-          const known = new Set(current.map((m) => m.id));
-          const fresh = data.messages.filter((m) => !known.has(m.id));
-          return fresh.length ? [...current, ...fresh] : current;
-        });
-      }
-    });
-    source.addEventListener('room-closed', () => {
-      setConnected(false);
-      info('Atelier fermé', 'L’hôte a quitté la session.');
-      setPhase('lobby');
-    });
-    source.onerror = () => {
-      setConnected(false);
-    };
-
-    async function pullRoom() {
-      try {
-        const response = await fetch(`/api/rooms/${code}`, { cache: 'no-store' });
-        if (!response.ok) return;
-        const payload = await response.json();
-        const incoming = sanitizeDoc(payload.doc as CircuitDoc);
-        // évite d'écraser une saisie locale en cours
-        if (JSON.stringify(incoming) !== pushedDocRef.current) {
-          setDoc(incoming);
-        }
-        setParticipants(payload.participants);
-        setRoomName(payload.name);
-        setOwnerId(payload.ownerId);
-        if (payload.messages?.length) setMessages(payload.messages);
-      } catch {
-        /* réseau instable : le prochain événement retentera */
-      }
-    }
-
-    void pullRoom();
-
-    return () => {
-      source.close();
-      eventSourceRef.current = null;
-    };
-  }, [phase, code, info]);
+  const participants: LiveParticipant[] = collaboration.participants;
+  interface ChatMessage {
+    id: string;
+    authorId: string;
+    authorName: string;
+    text: string;
+    at: string;
+  }
+  const messages = useMemo<ChatMessage[]>(() => {
+    const merged = new Map<string, ChatMessage>();
+    for (const message of [...initialMessages, ...collaboration.messages]) merged.set(message.id, message);
+    return [...merged.values()].sort((a, b) => a.at.localeCompare(b.at));
+  }, [initialMessages, collaboration.messages]);
+  const connected = collaboration.connected;
+  const remoteCursors: LiveCursor[] = collaboration.remoteCursors;
 
   /* ----------------------------------------------------- push des modifications */
   const onDocChange = useCallback(
     (next: CircuitDoc, commit: boolean) => {
       if (!commit || !code) return;
       pushedDocRef.current = JSON.stringify(next);
-      void fetch(`/api/rooms/${code}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc: next }),
-      }).catch(() => undefined);
+      void collaboration.pushDoc(next);
     },
-    [code],
+    [code, collaboration],
   );
 
   /* ------------------------------------------------------------------ actions */
@@ -225,6 +195,7 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
         body: JSON.stringify({
           name: newRoomName.trim() || template?.title || 'Atelier sans titre',
           doc: await templateDocToDoc(newRoomTemplate),
+          projectId: newRoomProject || undefined,
         }),
       });
       const payload = await buildResponse.json();
@@ -246,7 +217,6 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
     await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
     setPhase('lobby');
     setDoc(null);
-    setConnected(false);
     setCode('');
     router.replace('/multiwork');
     info('Atelier quitté', ownerId === user.id ? 'Vous étiez l’hôte : l’atelier est fermé si personne ne reste.' : 'Vous pouvez revenir avec le même code.');
@@ -254,25 +224,8 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
 
   async function sendMessage() {
     if (!chatText.trim() || !code) return;
-    const text = chatText.trim();
+    await collaboration.sendMessage(chatText);
     setChatText('');
-    const response = await fetch(`/api/rooms/${code}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
-    });
-    if (response.ok) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `local-${Date.now()}`,
-          authorId: user.id,
-          authorName: user.name,
-          text,
-          at: new Date().toISOString(),
-        },
-      ]);
-    }
   }
 
   async function copyInvite() {
@@ -335,7 +288,16 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
               user={{ id: user.id, name: user.name }}
               roomCode={code}
               onDocChange={onDocChange}
-              onlineCollaborators={participants}
+              onlineCollaborators={participants.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
+              collaboration={{
+                cursors: remoteCursors,
+                participants,
+                connected: collaboration.connected,
+                transport: collaboration.transport,
+                publishCursor: collaboration.publishCursor,
+                remoteRevision: revision,
+                lastAuthor: collaboration.lastAuthor,
+              }}
             />
           </div>
 
@@ -537,6 +499,27 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
             />
           </label>
 
+          {projects.length ? (
+            <label className="mt-3 block">
+              <span className="label-xs">Projet</span>
+              <select
+                value={newRoomProject}
+                onChange={(e) => setNewRoomProject(e.target.value)}
+                className="field mt-1"
+              >
+                <option value="">Aucun projet (atelier libre)</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[10px] text-fg-mute">
+                L’atelier apparaîtra dans le projet et partagera ses membres.
+              </span>
+            </label>
+          ) : null}
+
           <div className="mt-3">
             <span className="label-xs">Montage de départ</span>
             <div className="mt-1.5 grid max-h-[184px] grid-cols-2 gap-1.5 overflow-y-auto pr-1">
@@ -590,9 +573,46 @@ export function MultiworkHub({ user, initialCode, rooms, templates }: Props) {
           </span>
         </div>
 
+        {projects.length ? (
+          <div className="mb-2.5 flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setProjectFilter('all')}
+              className={cn(
+                'chip transition',
+                projectFilter === 'all' ? 'border-spark-cyan/60 bg-spark-cyan/10 text-spark-cyan' : 'hover:border-line',
+              )}
+            >
+              Tous les ateliers
+            </button>
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => setProjectFilter(project.id)}
+                className={cn(
+                  'chip transition',
+                  projectFilter === project.id ? 'text-fg' : 'text-fg-mute hover:border-line',
+                )}
+                style={
+                  projectFilter === project.id
+                    ? { borderColor: `${project.color}99`, background: `${project.color}18` }
+                    : undefined
+                }
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: project.color }} />
+                {project.name}
+                <span className="text-fg-mute">{project.rooms.length}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {rooms.length ? (
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {rooms.map((room) => (
+            {rooms
+              .filter((room) => projectFilter === 'all' || room.projectId === projectFilter)
+              .map((room) => (
               <article key={room.code} className="panel flex flex-col p-3.5">
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">

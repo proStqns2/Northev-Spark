@@ -42,7 +42,16 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 });
   }
-  const body = payload as { doc?: unknown; notes?: unknown; templateSlug?: unknown };
+  const body = payload as {
+    doc?: unknown;
+    notes?: unknown;
+    templateSlug?: unknown;
+    projectId?: unknown;
+  };
+  const projectId =
+    typeof body.projectId === 'string' && /^prj_[a-z0-9]{4,}$/i.test(body.projectId)
+      ? body.projectId
+      : undefined;
   const parsed = circuitDocSchema.safeParse(body.doc);
   if (!parsed.success) {
     return NextResponse.json(
@@ -58,6 +67,7 @@ export async function POST(request: Request) {
     notes: typeof body.notes === 'string' ? body.notes.slice(0, 2000) : (doc.notes ?? ''),
     doc,
     templateSlug: typeof body.templateSlug === 'string' ? body.templateSlug : undefined,
+    projectId,
     lastResult: eq.ok
       ? {
           vth: Math.hypot(eq.vth.re, eq.vth.im),

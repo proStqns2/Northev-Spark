@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   BookOpen,
+  FolderKanban,
   CircuitBoard,
   FlaskConical,
   LogOut,
@@ -21,6 +22,7 @@ import type { SessionUser } from '@/lib/auth/session';
 
 const LINKS = [
   { href: '/studio', label: 'Studio', icon: CircuitBoard },
+  { href: '/projets', label: 'Projets', icon: FolderKanban },
   { href: '/bibliotheque', label: 'Bibliothèque', icon: BookOpen },
   { href: '/multiwork', label: 'Multiwork', icon: Users },
   { href: '/premium', label: 'Agents IA', icon: Sparkles, badge: 'Premium' },

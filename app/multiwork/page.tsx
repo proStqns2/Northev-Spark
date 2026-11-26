@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { readSessionToken } from '@/lib/auth/session';
-import { listRoomsFor, resolveSession } from '@/lib/db/repo';
+import { listProjects, listRoomsFor, resolveSession } from '@/lib/db/repo';
 import { Template, TEMPLATES } from '@/lib/data/templates';
 import { MultiworkHub } from './MultiworkHub';
 
@@ -26,6 +26,7 @@ export default async function MultiworkPage({
   }
 
   const rooms = await listRoomsFor(user.id);
+  const projects = await listProjects(user.id);
 
   return (
     <MultiworkHub
@@ -36,6 +37,7 @@ export default async function MultiworkPage({
         name: r.name,
         ownerName: r.ownerName,
         ownerId: r.ownerId,
+        projectId: r.projectId,
         participants: Object.entries(r.presence).map(([id, p]) => ({
           id,
           name: p.name,
@@ -43,6 +45,12 @@ export default async function MultiworkPage({
         })),
         revision: r.revision,
         updatedAt: r.updatedAt,
+      }))}
+      projects={projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        rooms: p.rooms,
       }))}
       templates={TEMPLATES.map((t: Template) => ({
         slug: t.slug,

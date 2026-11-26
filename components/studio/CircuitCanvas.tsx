@@ -16,6 +16,8 @@ import { SymbolDefs, SymbolGlyph, KIND_COLORS } from './Symbols';
 import { ElectronFlow, WireGlow } from './ElectronFlow';
 import type { Reading } from '@/lib/engine/solver';
 import { cn } from '@/lib/utils';
+import { CursorOverlay, PresencePills } from './cursors/CursorOverlay';
+import type { LiveCursor, LiveParticipant } from '@/hooks/useCollaboration';
 
 export type Tool =
   | { mode: 'select' }
@@ -36,6 +38,21 @@ interface Props {
   flowSpeed: number;
   showGrid: boolean;
   className?: string;
+  /** collaboration temps réel */
+  collaborators?: LiveCursor[];
+  participants?: LiveParticipant[];
+  localId?: string;
+  onCursorMove?: (payload: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    vw: number;
+    vh: number;
+    hover: string | null;
+    tool: string;
+  }) => void;
+  showPresencePills?: boolean;
 }
 
 const MIN_VIEW = { w: 700, h: 430 };
@@ -52,6 +69,11 @@ export function CircuitCanvas({
   flowSpeed,
   showGrid,
   className,
+  collaborators = [],
+  participants = [],
+  localId = '',
+  onCursorMove,
+  showPresencePills = false,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -349,6 +371,59 @@ export function CircuitCanvas({
 
   const hoverPoint = hover ? cellToPoint(hover) : null;
 
+  /* ------------------------------------------- présence : position du curseur */
+  const [localPointer, setLocalPointer] = useState<{ x: number; y: number } | null>(null);
+  const pointingRef = useRef(false);
+
+  // conversions grille → pixels écran (les curseurs distants sont en coordonnées de grille)
+  const gridToPixel = useCallback(
+    (cell: { x: number; y: number }) => {
+      const svg = svgRef.current;
+      if (!svg) return { x: -9999, y: -9999 };
+      const ctm = svg.getScreenCTM();
+      const box = wrapRef.current?.getBoundingClientRect();
+      if (!ctm || !box) return { x: -9999, y: -9999 };
+      const px = ctm.a * cell.x * GRID + ctm.e - box.left;
+      const py = ctm.d * cell.y * GRID + ctm.f - box.top;
+      return { x: px, y: py };
+    },
+    [],
+  );
+
+  const publishPointer = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>, over?: string | null) => {
+      if (!onCursorMove) return;
+      const local = toSvg(event);
+      const vx = view.x / GRID;
+      const vy = view.y / GRID;
+      const vw = view.w / GRID;
+      const vh = view.h / GRID;
+      onCursorMove({
+        x: local.x / GRID,
+        y: local.y / GRID,
+        vx,
+        vy,
+        vw,
+        vh,
+        hover: over ?? null,
+        tool: tool.mode,
+      });
+    },
+    [onCursorMove, toSvg, view, tool.mode],
+  );
+
+  const handlePointerMoveWithPresence = (event: React.PointerEvent<SVGSVGElement>) => {
+    handlePointerMove(event);
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (box) {
+      setLocalPointer({ x: event.clientX - box.left, y: event.clientY - box.top });
+      if (!pointingRef.current) {
+        pointingRef.current = true;
+      }
+    }
+    publishPointer(event, hover);
+  };
+
   const draftRect = useMemo(() => {
     if (!draft) return null;
     const from = cellToPoint(draft.from);
@@ -375,11 +450,23 @@ export function CircuitCanvas({
           panning && 'cursor-grabbing',
         )}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
+        onPointerMove={handlePointerMoveWithPresence}
         onPointerUp={handlePointerUp}
         onPointerLeave={() => {
           setHover(null);
           setPanning(null);
+          setLocalPointer(null);
+          pointingRef.current = false;
+          onCursorMove?.({
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            vw: 0,
+            vh: 0,
+            hover: null,
+            tool: 'idle',
+          });
         }}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
@@ -570,7 +657,20 @@ export function CircuitCanvas({
         ) : null}
       </svg>
 
+      {/* --------------------------- curseurs des collaborateurs --------------------------- */}
+      <CursorOverlay
+        cursors={collaborators}
+        toPx={gridToPixel}
+        localCursor={onCursorMove ? localPointer : null}
+      />
+
       {/* --------------------------- légende / aides --------------------------- */}
+      {showPresencePills ? (
+        <div className="pointer-events-auto absolute right-12 top-3 z-20">
+          <PresencePills cursors={collaborators} participants={participants} localId={localId} />
+        </div>
+      ) : null}
+
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
         <span className="chip bg-ink-950/80 backdrop-blur">molette : zoom</span>
         <span className="chip bg-ink-950/80 backdrop-blur">alt + glisser : déplacer</span>

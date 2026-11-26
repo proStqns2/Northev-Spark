@@ -40,6 +40,7 @@ export async function PATCH(request: Request, { params }: Params) {
     notes?: unknown;
     starred?: unknown;
     status?: unknown;
+    projectId?: unknown;
   };
 
   if (body.starred !== undefined && body.doc === undefined) {
@@ -52,6 +53,10 @@ export async function PATCH(request: Request, { params }: Params) {
   if (body.notes !== undefined) patch.notes = String(body.notes).slice(0, 2000);
   if (body.status === 'draft' || body.status === 'published' || body.status === 'archived') {
     patch.status = body.status;
+  }
+  if (body.projectId === null) patch.projectId = undefined;
+  else if (typeof body.projectId === 'string' && /^prj_[a-z0-9]{4,}$/i.test(body.projectId)) {
+    patch.projectId = body.projectId;
   }
   if (body.doc !== undefined) {
     const parsed = circuitDocSchema.safeParse(body.doc);

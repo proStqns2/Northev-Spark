@@ -110,7 +110,29 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 - Sessions : cookie `httpOnly`, `sameSite=lax`, 30 jours ; jetons hachés côté serveur.
 - Multiwork : l'hôte crée un atelier → un code à 5 chiffres (sans zéro initial) est généré et unique parmi les ateliers ouverts.
 - Le second utilisateur saisit le code → il rejoint l'atelier, apparaît dans la présence et peut éditer le montage.
-- Diffusion par **Server-Sent Events** (`/api/rooms/[code]/events`) : révisions, présence et chat. Repli par interrogation périodique si le flux est coupé.
+- Diffusion par **Server-Sent Events** (`/api/rooms/[code]/events`) : révisions, présence, curseurs et chat. Repli par interrogation périodique si le flux est coupé.
+
+### Curseurs partagés (style Canva)
+
+Chaque participant voit le curseur des autres se déplacer **en direct et interpolé** sur la grille.
+
+| Élément | Rôle |
+|---|---|
+| `POST /api/rooms/[code]/cursor` | publie la position (cellules de grille), l'outil actif, l'élément survolé |
+| `GET /api/rooms/[code]/events` | un seul flux SSE ; événements `ready`, `presence`, `cursors`, `revision`, `chat`, `room-closed` |
+| `perfect-cursors` | interpolation par spline des points reçus → mouvement fluide à 60 fps |
+| `hooks/useCollaboration.ts` | sous-écrit la publication (throttle 100 ms), les participants et le repli polling |
+
+Détails : le serveur ne renvoie les curseurs que si leur signature a changé (~9 Hz), masque les curseurs inactifs depuis 12 s, et pousse un `heartbeat` toutes les 15 s. Le client dessine les curseurs distants au-dessus du canvas (`CursorOverlay`) avec pastille de nom colorée, et publie son propre pointeur converti en cellules par `getScreenCTM()`.
+
+### Projets
+
+Un projet regroupe plusieurs montages, ses membres et ses ateliers.
+
+- `/projets` — grille de cartes, recherche, modale de création (nom, description, couleur, montages de départ issus des gabarits).
+- `/projets/[id]` — onglets **Montages** (miniatures SVG, `U_th`/`Z_th`/`I_N` calculés, rattachement d'un montage existant), **Membres** (invitation par e-mail), **Ateliers** (ouverture d'un atelier rattaché au projet + codes actifs), **Paramètres** (renommage, suppression propriétaire).
+- API : `GET|POST /api/projects`, `GET|PATCH|DELETE /api/projects/[id]`, `POST /api/projects/[id]/members`, `POST /api/projects/[id]/circuits`.
+- Le studio propose un sélecteur « Projet » dans sa barre d'outils ; la sauvegarde envoie `projectId`. Le hub Multiwork permet de rattacher un atelier à un projet et de filtrer les sessions par projet.
 
 ---
 
@@ -133,12 +155,15 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 app/                    pages (App Router) + routes API
   api/auth/*            inscription, connexion, déconnexion, session
   api/circuits/*        historique CRUD + favoris + synchro cloud
-  api/rooms/*           ateliers multiwork, présence, chat, SSE
+  api/rooms/*           ateliers multiwork, présence, curseurs, chat, SSE
+  api/projects/*        projets, membres, rattachement de montages
   api/ai                hub d'agents (local / OpenAI / Gemini)
   api/import, solve      import texte/JSON, calcul serveur
 components/
   shell/ ui/            navigation, toasts, avatars, thèmes
+  studio/cursors/       PerfectCursor (spline) + CursorOverlay (curseurs distants)
   studio/               canvas SVG, palette, inspecteur, résultats
+hooks/useCollaboration.ts  présence + curseurs temps réel (SSE, repli polling)
   marketing/            vignettes néon de la bibliothèque
 lib/
   engine/               types, complex, linalg, solver, equivalent, reduce, format

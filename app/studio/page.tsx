@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { StudioPageClient } from './StudioPageClient';
 import { readSessionToken } from '@/lib/auth/session';
-import { getCircuit, resolveSession } from '@/lib/db/repo';
+import { getCircuit, listProjects, resolveSession } from '@/lib/db/repo';
 import { templateDoc } from '@/lib/data/loadDoc';
 import { CircuitDoc } from '@/lib/engine/types';
 import { sanitizeDoc } from '@/lib/studio/doc';
@@ -25,12 +25,15 @@ export default async function StudioPage({
   const user = token ? await resolveSession(token) : null;
 
   let doc: CircuitDoc | null = null;
+  let projectId: string | undefined;
   if (params.circuit && user) {
     const circuit = await getCircuit(params.circuit, user.id);
     if (circuit) {
       doc = sanitizeDoc(circuit.doc as CircuitDoc);
+      projectId = circuit.projectId;
     }
   }
+  const projects = user ? await listProjects(user.id) : [];
   if (!doc && params.template) {
     doc = templateDoc(params.template);
   }
@@ -41,6 +44,8 @@ export default async function StudioPage({
       circuitId={params.circuit}
       templateSlug={params.template}
       templateDocJson={doc ? JSON.stringify(doc) : null}
+      projectOptions={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
+      initialProjectId={projectId}
       templates={TEMPLATES.map((t) => ({
         slug: t.slug,
         title: t.title,

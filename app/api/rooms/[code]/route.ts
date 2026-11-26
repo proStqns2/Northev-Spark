@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readSessionToken } from '@/lib/auth/session';
-import { findRoom, leaveRoom, resolveSession, touchRoom } from '@/lib/db/repo';
+import { findRoom, leaveRoom, livePresence, resolveSession, touchRoom } from '@/lib/db/repo';
 import { roomPatchSchema } from '@/lib/validation';
 import { publishRoomEvent } from '@/lib/db/supabase';
 import { CircuitDoc } from '@/lib/engine/types';
@@ -25,16 +25,21 @@ export async function GET(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Atelier introuvable ou fermé.', code: 'room_not_found' }, { status: 404, headers: NO_STORE });
   }
 
-  const presence = Object.entries(room.presence).map(([id, p]) => ({ id, ...p }));
+  const presence = livePresence(room);
 
   if (isPoll) {
     if (user) {
       const previous = room.presence[user.id];
       room.presence[user.id] = {
+        id: user.id,
         name: user.name,
         avatar: user.avatar,
         color: previous?.color ?? '#38e1e6',
         at: new Date().toISOString(),
+        cursor: previous?.cursor,
+        idle: previous?.idle,
+        activity: previous?.activity,
+        seenAt: Date.now(),
       };
       await touchRoom(code, { presence: room.presence });
     }
@@ -50,6 +55,7 @@ export async function GET(request: Request, { params }: Params) {
         ownerId: room.ownerId,
         ownerName: room.ownerName,
         circuitId: room.circuitId,
+      projectId: room.projectId,
       },
       { headers: NO_STORE },
     );
@@ -116,10 +122,13 @@ export async function PATCH(request: Request, { params }: Params) {
     presence: {
       ...room.presence,
       [user.id]: {
+        ...room.presence[user.id],
+        id: user.id,
         name: user.name,
         avatar: user.avatar,
         color: room.presence[user.id]?.color ?? '#38e1e6',
         at: new Date().toISOString(),
+        seenAt: Date.now(),
       },
     },
   });

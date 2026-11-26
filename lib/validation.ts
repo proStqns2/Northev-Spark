@@ -86,6 +86,7 @@ export const profileSchema = z.object({
 export const roomCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   circuitId: z.string().max(64).optional(),
+  projectId: z.string().regex(/^prj_[a-z0-9]+$/i).optional(),
   doc: circuitDocSchema,
 });
 

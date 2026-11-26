@@ -13,6 +13,8 @@ interface Props {
   circuitId?: string;
   templateSlug?: string;
   templateDocJson: string | null;
+  projectOptions?: Array<{ id: string; name: string; color: string }>;
+  initialProjectId?: string;
   templates: Array<{
     slug: string;
     title: string;
@@ -23,7 +25,15 @@ interface Props {
   }>;
 }
 
-export function StudioPageClient({ user, circuitId, templateSlug, templateDocJson, templates }: Props) {
+export function StudioPageClient({
+  user,
+  circuitId,
+  templateSlug,
+  templateDocJson,
+  templates,
+  projectOptions = [],
+  initialProjectId,
+}: Props) {
   // Initialisation SYNCHRONE : le studio est rendu dès le serveur (pas d'écran de chargement).
   const [doc, setDoc] = useState<CircuitDoc>(() => {
     if (templateDocJson) {
@@ -116,6 +126,8 @@ export function StudioPageClient({ user, circuitId, templateSlug, templateDocJso
         user={user}
         circuitId={circuitId}
         templateSlug={templateSlug}
+        projectOptions={projectOptions}
+        initialProjectId={initialProjectId}
       />
       ) : null}
     </div>

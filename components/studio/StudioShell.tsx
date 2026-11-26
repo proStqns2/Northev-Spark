@@ -24,7 +24,7 @@ import {
   Upload,
   Users,
   } from 'lucide-react';
-import { CircuitDoc } from '@/lib/engine/types';
+import { CircuitDoc, COMPONENT_META } from '@/lib/engine/types';
 import { formatSI, formatPhasor } from '@/lib/engine/format';
 import { abs } from '@/lib/engine/complex';
 import { CircuitCanvas, Tool } from './CircuitCanvas';
@@ -44,6 +44,11 @@ import {
 } from '@/lib/studio/export';
 import { sanitizeDoc } from '@/lib/studio/doc';
 import { useToast } from '@/components/ui/Toast';
+import type { LiveCursor, LiveParticipant } from '@/hooks/useCollaboration';
+
+const COMPONENT_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(COMPONENT_META).map(([kind, meta]) => [kind, meta.label.toLowerCase()]),
+);
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -53,9 +58,21 @@ interface Props {
   circuitId?: string;
   roomCode?: string;
   templateSlug?: string;
+  projectOptions?: Array<{ id: string; name: string; color: string }>;
+  initialProjectId?: string;
   onDocChange?: (doc: CircuitDoc, commit: boolean) => void;
   onlineCollaborators?: Array<{ id: string; name: string; color: string }>;
   writeEnabled?: boolean;
+  /** collaboration : présence + curseurs (branchée sur useCollaboration) */
+  collaboration?: {
+    cursors: LiveCursor[];
+    participants: LiveParticipant[];
+    connected: boolean;
+    transport: 'sse' | 'poll' | 'offline';
+    publishCursor: (payload: Record<string, unknown>, options?: { immediate?: boolean }) => void;
+    remoteRevision: number;
+    lastAuthor?: string;
+  };
 }
 
 export function StudioShell({
@@ -65,11 +82,15 @@ export function StudioShell({
   circuitId,
   roomCode,
   templateSlug,
+  projectOptions = [],
+  initialProjectId,
   onDocChange,
   onlineCollaborators = [],
   writeEnabled = true,
+  collaboration,
 }: Props) {
   const studio = useStudio(initialDoc);
+  const [projectId, setProjectId] = useState<string | undefined>(initialProjectId);
   const { doc, setDoc, selected, selectedId, setSelectedId } = studio;
   const { equivalent, solution } = useCircuitEngine(doc);
   const { success, error, info } = useToast();
@@ -151,6 +172,47 @@ export function StudioShell({
     [setDoc, mode, onDocChange],
   );
 
+  /* --------------------------------------------- description de l'activité */
+  const activity = useMemo(() => {
+    if (selected) {
+      return `règle ${selected.label ?? selected.id}`;
+    }
+    if (tool.mode === 'place') {
+      return `trace ${COMPONENT_LABEL[tool.kind] ?? 'un dipôle'}`;
+    }
+    switch (tool.mode) {
+      case 'erase':
+        return 'efface un élément';
+      case 'terminal':
+        return `place la borne ${tool.which.toUpperCase()}`;
+      case 'ground':
+        return 'place la masse';
+      default:
+        return 'explore le montage';
+    }
+  }, [selected, tool]);
+
+  useEffect(() => {
+    if (!collaboration) return;
+    collaboration.publishCursor({ activity });
+  }, [activity, collaboration]);
+
+  const onCursorMove = useCallback(
+    (payload: {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      vw: number;
+      vh: number;
+      hover: string | null;
+      tool: string;
+    }) => {
+      collaboration?.publishCursor({ ...payload, activity });
+    },
+    [collaboration, activity],
+  );
+
   /* ------------------------------------------------------------- sauvegarde */
   const saveCircuit = useCallback(async () => {
     if (!user) {
@@ -167,7 +229,7 @@ export function StudioShell({
       const response = await fetch(circuitId ? `/api/circuits/${circuitId}` : '/api/circuits', {
         method: circuitId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc, templateSlug }),
+        body: JSON.stringify({ doc, templateSlug, projectId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -180,7 +242,7 @@ export function StudioShell({
     } finally {
       setSaving(false);
     }
-  }, [user, writeEnabled, circuitId, doc, templateSlug, studio, success, error, router, info]);
+  }, [user, writeEnabled, circuitId, doc, templateSlug, projectId, studio, success, error, router, info]);
 
   /* --------------------------------------------------------------- raccourcis */
   useEffect(() => {
@@ -237,9 +299,33 @@ export function StudioShell({
           />
           {studio.dirty ? <span className="h-1.5 w-1.5 rounded-full bg-spark-amber" title="Modifié" /> : null}
           {mode === 'room' ? (
-            <span className="chip border-spark-violet/40 bg-spark-violet/10 text-spark-violet">
-              <Users size={11} /> atelier {roomCode}
-            </span>
+            <>
+              <span className="chip border-spark-violet/40 bg-spark-violet/10 text-spark-violet">
+                <Users size={11} /> atelier {roomCode}
+              </span>
+              <span
+                className={cn(
+                  'chip',
+                  collaboration?.connected
+                    ? 'border-spark-green/40 bg-spark-green/10 text-spark-green'
+                    : 'border-spark-coral/40 bg-spark-coral/10 text-spark-coral',
+                )}
+                title={`Transport : ${collaboration?.transport ?? 'hors ligne'}`}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    background: collaboration?.connected ? '#46e6a0' : '#ff7d6b',
+                    boxShadow: collaboration?.connected ? '0 0 6px #46e6a0' : 'none',
+                  }}
+                />
+                {collaboration?.connected
+                  ? collaboration.transport === 'poll'
+                    ? 'synchro (repli)'
+                    : 'curseurs en direct'
+                  : 'reconnexion…'}
+              </span>
+            </>
           ) : null}
         </div>
 
@@ -276,6 +362,25 @@ export function StudioShell({
             active={split}
           />
           <span className="mx-1 h-5 w-px bg-line/60" />
+          {user ? (
+            <div className="flex items-center gap-1 rounded-md border border-line/50 pl-1.5">
+              <FolderOpen size={12} className="text-fg-mute" />
+              <select
+                value={projectId ?? ''}
+                onChange={(event) => setProjectId(event.target.value || undefined)}
+                aria-label="Projet du montage"
+                className="max-w-[118px] truncate bg-transparent py-1 pr-1 text-[11px] text-fg-soft outline-none"
+                title="Rattacher ce montage à un projet"
+              >
+                <option value="">Sans projet</option>
+                {projectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -424,6 +529,11 @@ export function StudioShell({
               showFlow={showFlow}
               flowSpeed={flowSpeed}
               showGrid={showGrid}
+              collaborators={collaboration?.cursors ?? []}
+              participants={collaboration?.participants ?? onlineCollaborators.map((p) => ({ ...p, idle: false }))}
+              localId={user?.id ?? ''}
+              onCursorMove={collaboration ? onCursorMove : undefined}
+              showPresencePills={Boolean(collaboration)}
             />
             {!writeEnabled ? (
               <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-spark-amber/40 bg-ink-950/90 px-3 py-1.5 text-[11px] text-spark-amber backdrop-blur">
