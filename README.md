@@ -88,10 +88,10 @@ npx tsx scripts/seed-demo.ts
 
 ```bash
 npx tsx scripts/verify-engine.ts   # 8 cas analytiques (npm run verify)
-npm test                           # 16 tests unitaires
+npm test                           # 20 tests unitaires
 ```
 
-`npm test` couvre le solveur MNA (diviseur, Wheatstone, superposition, RC/RLC en alternatif), le simulateur de charge `R_L`, les messages du canal multi-onglets et le rendu SSR des schémas équivalents.
+`npm test` couvre le solveur MNA (diviseur, Wheatstone, superposition, RC/RLC en alternatif), le simulateur de charge `R_L`, les messages du canal multi-onglets, la rotation des dipôles et le rendu SSR des schémas équivalents.
 
 ---
 

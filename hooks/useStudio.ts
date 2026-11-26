@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { CircuitDoc } from '@/lib/engine/types';
-import { cloneDoc, moveComponent, normalizeSpan, sanitizeDoc, updateComponent } from '@/lib/studio/doc';
+import { cloneDoc, moveComponent, rotateComponent, sanitizeDoc, updateComponent } from '@/lib/studio/doc';
 
 interface HistoryState {
   past: CircuitDoc[];
@@ -134,14 +134,9 @@ export function useStudio(initial: CircuitDoc) {
 
   const rotateSelected = useCallback(() => {
     if (!selected) return;
-    const [ax, ay] = selected.a.split(',').map(Number);
-    const [bx, by] = selected.b.split(',').map(Number);
-    const dx = bx - ax;
-    const dy = by - ay;
-    const nextB = `${ax - dy},${ay + dx}`;
     dispatch({
       type: 'set',
-      doc: updateComponent(state.present, selected.id, normalizeSpan({ ...selected, b: nextB })),
+      doc: rotateComponent(state.present, selected.id),
       commit: true,
     });
   }, [selected, state.present]);

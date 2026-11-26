@@ -154,6 +154,24 @@ export function normalizeSpan(c: Component): Component {
   return { ...c, b: pointToCell(a.x + span, a.y) };
 }
 
+/**
+ * Pivote un dipôle d'un quart de tour autour de sa borne A.
+ *
+ * Le canvas ne stocke pas d'angle : l'orientation est portée par la position
+ * de la borne B (le symbole est dessiné dans le repère A→B). Quatre rotations
+ * ramènent donc exactement au montage d'origine.
+ */
+export function rotateComponent(doc: CircuitDoc, id: string): CircuitDoc {
+  const component = doc.components.find((c) => c.id === id);
+  if (!component) return doc;
+  const [ax, ay] = component.a.split(',').map(Number);
+  const [bx, by] = component.b.split(',').map(Number);
+  const dx = bx - ax;
+  const dy = by - ay;
+  const nextB = pointToCell(ax - dy, ay + dx);
+  return updateComponent(doc, id, normalizeSpan({ ...component, b: nextB }));
+}
+
 export function updateComponent(doc: CircuitDoc, id: string, patch: Partial<Component>): CircuitDoc {
   return {
     ...doc,
