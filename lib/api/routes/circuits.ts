@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import {
   createCircuit,
   deleteCircuit,
@@ -27,8 +28,8 @@ function lastResultOf(doc: CircuitDoc) {
     : undefined;
 }
 
-export async function registerCircuitRoutes(app: FastifyInstance) {
-  app.get('/api/circuits', async (request, reply) => {
+export const circuitRoutes: ApiRoute[] = [
+['GET', '/api/circuits', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
 
@@ -46,9 +47,9 @@ export async function registerCircuitRoutes(app: FastifyInstance) {
     });
     reply.header('Cache-Control', 'no-store');
     return reply.send({ circuits: items, synced: { imported, cloud } });
-  });
+  }],
 
-  app.post('/api/circuits', async (request, reply) => {
+  ['POST', '/api/circuits', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
 
@@ -72,9 +73,9 @@ export async function registerCircuitRoutes(app: FastifyInstance) {
       lastResult: lastResultOf(doc),
     });
     return reply.code(201).send({ circuit });
-  });
+  }],
 
-  app.get('/api/circuits/:id', async (request, reply) => {
+  ['GET', '/api/circuits/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -82,9 +83,9 @@ export async function registerCircuitRoutes(app: FastifyInstance) {
     if (!circuit) return fail(reply, 404, 'Montage introuvable.');
     reply.header('Cache-Control', 'no-store');
     return reply.send({ circuit });
-  });
+  }],
 
-  app.patch('/api/circuits/:id', async (request, reply) => {
+  ['PATCH', '/api/circuits/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -123,14 +124,15 @@ export async function registerCircuitRoutes(app: FastifyInstance) {
     const circuit = await updateCircuit(id, user.id, patch);
     if (!circuit) return fail(reply, 404, 'Montage introuvable.');
     return reply.send({ circuit });
-  });
+  }],
 
-  app.delete('/api/circuits/:id', async (request, reply) => {
+  ['DELETE', '/api/circuits/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
     const ok = await deleteCircuit(id, user.id);
     if (!ok) return fail(reply, 403, 'Suppression impossible.');
     return reply.send({ ok: true });
-  });
-}
+  }]
+];
+

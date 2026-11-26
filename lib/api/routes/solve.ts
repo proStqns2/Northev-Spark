@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { circuitDocSchema } from '@/lib/validation';
 import type { CircuitDoc } from '@/lib/engine/types';
 import { cachedEquivalent, cachedSolve } from '@/lib/cache';
@@ -19,8 +20,8 @@ const safeReading = (r: { v: Complex; i: Complex; p: Complex; indeterminate?: bo
   indeterminate: r.indeterminate ?? false,
 });
 
-export async function registerSolveRoutes(app: FastifyInstance) {
-  app.post('/api/solve', async (request, reply) => {
+export const solveRoutes: ApiRoute[] = [
+['POST', '/api/solve', async (request, reply) => {
     const body = bodyOf<{ doc?: unknown; include?: { readings?: boolean; reduction?: boolean } }>(request);
     const parsed = circuitDocSchema.safeParse(body.doc);
     if (!parsed.success) {
@@ -70,5 +71,6 @@ export async function registerSolveRoutes(app: FastifyInstance) {
 
     reply.header('Cache-Control', 'no-store');
     return reply.send(payloadOut);
-  });
-}
+  }]
+];
+

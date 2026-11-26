@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { authenticate, createSession, createUser, destroySession } from '@/lib/db/repo';
 import { cloudEnabled } from '@/lib/db/supabase';
 import { loginSchema, registerSchema } from '@/lib/validation';
@@ -22,8 +23,8 @@ function publicUser(user: {
   };
 }
 
-export async function registerAuthRoutes(app: FastifyInstance) {
-  app.post('/api/auth/register', async (request, reply) => {
+export const authRoutes: ApiRoute[] = [
+['POST', '/api/auth/register', async (request, reply) => {
     const parsed = registerSchema.safeParse(bodyOf(request));
     if (!parsed.success) {
       return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Données invalides.', {
@@ -37,9 +38,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const token = await createSession(result.user.id);
     setSessionCookie(reply, token);
     return reply.send({ user: publicUser(result.user) });
-  });
+  }],
 
-  app.post('/api/auth/login', async (request, reply) => {
+  ['POST', '/api/auth/login', async (request, reply) => {
     const parsed = loginSchema.safeParse(bodyOf(request));
     if (!parsed.success) {
       return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Données invalides.');
@@ -51,18 +52,19 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const token = await createSession(user.id);
     setSessionCookie(reply, token);
     return reply.send({ user: publicUser(user) });
-  });
+  }],
 
-  app.post('/api/auth/logout', async (request, reply) => {
+  ['POST', '/api/auth/logout', async (request, reply) => {
     const token = getSessionToken(request);
     if (token) await destroySession(token);
     clearSessionCookie(reply);
     return reply.send({ ok: true });
-  });
+  }],
 
-  app.get('/api/auth/me', async (request, reply) => {
+  ['GET', '/api/auth/me', async (request, reply) => {
     const user = await currentUser(request);
     reply.header('Cache-Control', 'no-store');
     return reply.send({ user, cloud: cloudEnabled() });
-  });
-}
+  }]
+];
+

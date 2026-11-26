@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { z } from 'zod';
 import { changePassword, setUserKey, updateUser, userKeyInfo } from '@/lib/db/repo';
 import { profileSchema } from '@/lib/validation';
@@ -18,15 +19,15 @@ const keyBodySchema = z.object({
   key: z.string().trim().min(10).max(200),
 });
 
-export async function registerProfileRoutes(app: FastifyInstance) {
-  app.get('/api/profile', async (request, reply) => {
+export const profileRoutes: ApiRoute[] = [
+['GET', '/api/profile', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     reply.header('Cache-Control', 'no-store');
     return reply.send({ user });
-  });
+  }],
 
-  app.patch('/api/profile', async (request, reply) => {
+  ['PATCH', '/api/profile', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = profileSchema.safeParse(bodyOf(request));
@@ -35,9 +36,9 @@ export async function registerProfileRoutes(app: FastifyInstance) {
     }
     const updated = await updateUser(user.id, parsed.data);
     return reply.send({ user: updated });
-  });
+  }],
 
-  app.put('/api/profile', async (request, reply) => {
+  ['PUT', '/api/profile', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = passwordSchema.safeParse(bodyOf(request));
@@ -47,11 +48,11 @@ export async function registerProfileRoutes(app: FastifyInstance) {
     const result = await changePassword(user.id, parsed.data.current, parsed.data.next);
     if (!result.ok) return fail(reply, 403, result.error);
     return reply.send({ ok: true, reauth: true });
-  });
+  }],
 
   // ---- clés API personnelles (coffre chiffré) ----
 
-  app.get('/api/profile/keys', async (request, reply) => {
+  ['GET', '/api/profile/keys', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const info = await userKeyInfo(user.id);
@@ -67,9 +68,9 @@ export async function registerProfileRoutes(app: FastifyInstance) {
         openai: Boolean(info?.openai) || server.openai,
       },
     });
-  });
+  }],
 
-  app.post('/api/profile/keys', async (request, reply) => {
+  ['POST', '/api/profile/keys', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = keyBodySchema.safeParse(bodyOf(request));
@@ -103,9 +104,9 @@ export async function registerProfileRoutes(app: FastifyInstance) {
       fingerprint: fingerprint(parsed.data.key),
       note: 'Clé chiffrée (AES-256-GCM). Elle ne sera plus jamais renvoyée en clair.',
     });
-  });
+  }],
 
-  app.delete('/api/profile/keys', async (request, reply) => {
+  ['DELETE', '/api/profile/keys', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const provider = (request.query as Record<string, string> | undefined)?.provider;
@@ -114,5 +115,6 @@ export async function registerProfileRoutes(app: FastifyInstance) {
     }
     await setUserKey(user.id, provider, null);
     return reply.send({ ok: true, removed: provider });
-  });
-}
+  }]
+];
+

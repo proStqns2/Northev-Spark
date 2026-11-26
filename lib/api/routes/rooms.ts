@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { z } from 'zod';
 import {
   createCircuit,
@@ -39,9 +40,9 @@ export interface RoomRouteOptions {
   sse: boolean;
 }
 
-export async function registerRoomRoutes(app: FastifyInstance, options: RoomRouteOptions = { sse: true }) {
-  // ---- liste des ateliers de l'utilisateur
-  app.get('/api/rooms', async (request, reply) => {
+export const roomRoutes: ApiRoute[] = [
+// ---- liste des ateliers de l'utilisateur
+  ['GET', '/api/rooms', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const rooms = await listRoomsFor(user.id);
@@ -59,10 +60,10 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
         updatedAt: r.updatedAt,
       })),
     });
-  });
+  }],
 
   // ---- création d'un atelier (à partir d'un montage ou d'un document)
-  app.post('/api/rooms', async (request, reply) => {
+  ['POST', '/api/rooms', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = roomCreateSchema.safeParse(bodyOf(request));
@@ -106,10 +107,10 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
       revision: room.revision,
       createdAt: room.createdAt,
     });
-  });
+  }],
 
   // ---- rejoindre un atelier par son code
-  app.post('/api/rooms/join', async (request, reply) => {
+  ['POST', '/api/rooms/join', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = roomJoinSchema.safeParse(bodyOf(request));
@@ -125,10 +126,10 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
       revision: result.room.revision,
       updatedAt: result.room.updatedAt,
     });
-  });
+  }],
 
   // ---- détail / sondage (rev) / mise à jour / départ
-  app.get('/api/rooms/:code', async (request, reply) => {
+  ['GET', '/api/rooms/:code', async (request, reply) => {
     const { code } = request.params as { code: string };
     const query = (request.query ?? {}) as Record<string, string>;
     const since = Number(query.rev ?? '0');
@@ -185,9 +186,9 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
       ownerName: room.ownerName,
       circuitId: room.circuitId,
     });
-  });
+  }],
 
-  app.patch('/api/rooms/:code', async (request, reply) => {
+  ['PATCH', '/api/rooms/:code', async (request, reply) => {
     const { code } = request.params as { code: string };
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
@@ -238,19 +239,19 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
 
     reply.header('Cache-Control', NO_STORE['Cache-Control']);
     return reply.send({ revision: updated?.revision ?? room.revision + 1, savedAt: updated?.updatedAt });
-  });
+  }],
 
-  app.delete('/api/rooms/:code', async (request, reply) => {
+  ['DELETE', '/api/rooms/:code', async (request, reply) => {
     const { code } = request.params as { code: string };
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     await leaveRoom(code, user.id);
     reply.header('Cache-Control', NO_STORE['Cache-Control']);
     return reply.send({ ok: true });
-  });
+  }],
 
   // ---- curseur (appelé à ~10 Hz par le studio)
-  app.post('/api/rooms/:code/cursor', async (request, reply) => {
+  ['POST', '/api/rooms/:code/cursor', async (request, reply) => {
     const { code } = request.params as { code: string };
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
@@ -281,84 +282,6 @@ export async function registerRoomRoutes(app: FastifyInstance, options: RoomRout
     if (presenceRev === null) return fail(reply, 404, 'Atelier introuvable ou fermé.');
     reply.header('Cache-Control', 'no-store');
     return reply.send({ ok: true, rev: presenceRev });
-  });
+  }]
+];
 
-  // ---- flux Server-Sent Events de l'atelier
-  if (options.sse) app.get('/api/rooms/:code/events', async (request, reply) => {
-    const { code } = request.params as { code: string };
-    const user = await currentUser(request);
-    if (!user) return fail(reply, 401, 'Non authentifié');
-    const room = await findRoom(code);
-    if (!room) return fail(reply, 404, 'Atelier introuvable');
-
-    await ensurePresence(code, user);
-
-    reply.hijack();
-    const res = reply.raw;
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-
-    let closed = false;
-    const send = (event: string, data: unknown) => {
-      if (closed) return;
-      try {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      } catch {
-        closed = true;
-      }
-    };
-
-    const stream = openRoomStream(code, user);
-    const cleanup = () => {
-      if (closed) return;
-      closed = true;
-      clearInterval(interval);
-      clearInterval(heartbeat);
-      try {
-        res.end();
-      } catch {
-        /* déjà fermé */
-      }
-    };
-
-    const tick = async () => {
-      if (closed) return;
-      try {
-        for (const event of await stream.poll()) {
-          send(event.event, event.data);
-          if (event.event === 'room-closed') {
-            cleanup();
-            return;
-          }
-        }
-      } catch {
-        /* on retentera au prochain battement */
-      }
-    };
-
-    const interval = setInterval(tick, TICK_MS);
-    const heartbeat = setInterval(() => {
-      if (closed) return;
-      try {
-        res.write(': keep-alive\n\n');
-      } catch {
-        closed = true;
-      }
-    }, 15000);
-
-    request.raw.on('close', cleanup);
-    res.on('error', cleanup);
-
-    const ready = await stream.start();
-    if (!ready) {
-      cleanup();
-      return;
-    }
-    for (const event of ready) send(event.event, event.data);
-    void tick();
-  });
-}

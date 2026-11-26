@@ -1,124 +1,114 @@
-import type { FastifyInstance } from 'fastify';
-import { buildApp } from '@/server/api/buildApp';
+import { ApiReply, matchRoute, pathExists, type ApiRoute } from '@/lib/api/http';
+import { authRoutes } from '@/lib/api/routes/auth';
+import { profileRoutes } from '@/lib/api/routes/profile';
+import { circuitRoutes } from '@/lib/api/routes/circuits';
+import { projectRoutes } from '@/lib/api/routes/projects';
+import { roomRoutes } from '@/lib/api/routes/rooms';
+import { aiRoutes } from '@/lib/api/routes/ai';
+import { miscRoutes } from '@/lib/api/routes/misc';
+import { solveRoutes } from '@/lib/api/routes/solve';
+import { templateRoutes } from '@/lib/api/routes/templates';
 
 /**
- * Passerelle `/api/*` de Next.js.
+ * API du site — route handler Next.js natif.
  *
- * Deux fonctionnements, même code métier :
- *
- *  1. `API_URL` défini (poste de développement, backend Node déjà lancé) :
- *     la requête est relayée telle quelle vers ce serveur. Un seul processus
- *     écrit alors dans `.data/db.json`, comme avant.
- *
- *  2. `API_URL` absent (Vercel) : l'application Fastify est construite dans la
- *     fonction et appelée par `inject()` — aucun port n'est ouvert, la latence
- *     d'un aller-retour réseau disparaît, et les routes sont exactement les
- *     mêmes que celles du serveur autonome.
- *
- * Le flux SSE des salles a son propre fichier (`app/api/rooms/[code]/events`).
+ * Il n'y a plus de serveur annexe : tout le contrôle (pages React, API,
+ * authentification, temps réel) vit dans cette application Next.js. Une
+ * requête `/api/…` arrive ici, la table ci-dessous choisit le handler et
+ * renvoie directement une `Response` Web.
  */
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
-let appPromise: Promise<FastifyInstance> | null = null;
+const ROUTES: readonly ApiRoute[] = [
+  ...authRoutes,
+  ...profileRoutes,
+  ...circuitRoutes,
+  ...projectRoutes,
+  ...roomRoutes,
+  ...aiRoutes,
+  ...miscRoutes,
+  ...solveRoutes,
+  ...templateRoutes,
+];
 
-function embeddedApp(): Promise<FastifyInstance> {
-  appPromise ??= buildApp({ realtime: false });
-  return appPromise;
-}
+const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' } as const;
 
-const HOP_BY_HOP = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'host',
-  'content-length',
-  'accept-encoding',
-]);
-
-async function proxy(request: Request, target: string, path: string): Promise<Response> {
-  const url = new URL(request.url);
-  const headers = new Headers();
-  request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key)) headers.set(key, value);
-  });
-
-  const method = request.method.toUpperCase();
-  const hasBody = !['GET', 'HEAD'].includes(method);
-  const response = await fetch(`${target}${path}${url.search}`, {
-    method,
-    headers,
-    body: hasBody ? await request.arrayBuffer() : undefined,
-    redirect: 'manual',
-    cache: 'no-store',
-  });
-
-  const outHeaders = new Headers();
-  response.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key)) outHeaders.set(key, value);
-  });
-  for (const cookie of response.headers.getSetCookie?.() ?? []) {
-    outHeaders.append('set-cookie', cookie);
+async function readBody(request: Request): Promise<unknown> {
+  if (request.method === 'GET' || request.method === 'HEAD') return {};
+  const type = request.headers.get('content-type') ?? '';
+  const raw = await request.text();
+  if (!raw) return {};
+  if (type.includes('application/json')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
   }
-
-  return new Response(response.body, { status: response.status, headers: outHeaders });
+  // formulaire classique ou texte brut
+  if (type.includes('application/x-www-form-urlencoded')) {
+    return Object.fromEntries(new URLSearchParams(raw));
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { text: raw };
+  }
 }
 
-async function handle(request: Request, context: { params: Promise<{ path?: string[] }> }): Promise<Response> {
+async function dispatch(request: Request, context: { params: Promise<{ path?: string[] }> }): Promise<Response> {
   const { path: segments = [] } = await context.params;
   const url = new URL(request.url);
-  const path = `/api/${segments.join('/')}`;
+  const pathname = `/${['api', ...segments].join('/')}`;
 
-  const target = process.env.API_URL;
-  if (target) {
-    try {
-      return await proxy(request, target.replace(/\/$/, ''), path);
-    } catch {
-      return Response.json(
-        { error: 'API injoignable', detail: `Aucun serveur ne répond sur ${target}.` },
-        { status: 502 },
-      );
-    }
+  const matched = matchRoute(ROUTES, request.method.toUpperCase(), pathname);
+  if (!matched) {
+    const status = pathExists(ROUTES, pathname) ? 405 : 404;
+    return Response.json(
+      { error: status === 405 ? 'Méthode non autorisée pour cette route.' : 'Route introuvable.' },
+      { status, headers: NO_STORE },
+    );
   }
 
-  const app = await embeddedApp();
-  const headers: Record<string, string> = {};
+  const query: Record<string, string> = {};
+  url.searchParams.forEach((value, key) => {
+    query[key] = value;
+  });
+
+  const headers: Record<string, string | undefined> = {};
   request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key)) headers[key] = value;
+    headers[key] = value;
   });
 
-  const method = request.method.toUpperCase();
-  const payload = ['GET', 'HEAD'].includes(method) ? undefined : await request.text();
-
-  const injected = await app.inject({
-    method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD',
-    url: `${path}${url.search}`,
-    headers,
-    payload,
-  });
-
-  const outHeaders = new Headers();
-  for (const [key, value] of Object.entries(injected.headers)) {
-    if (value === undefined || HOP_BY_HOP.has(key) || key === 'set-cookie') continue;
-    outHeaders.set(key, String(value));
+  const reply = new ApiReply().header('Cache-Control', NO_STORE['Cache-Control']);
+  try {
+    const result = await matched.handler(
+      { body: await readBody(request), params: matched.params, query, headers, url: request.url },
+      reply,
+    );
+    return result instanceof Response ? result : reply.toResponse();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Erreur inattendue.';
+    console.error(`[api] ${request.method} ${pathname} →`, e);
+    return Response.json({ error: message }, { status: 500, headers: NO_STORE });
   }
-  const cookies = injected.headers['set-cookie'];
-  if (cookies) {
-    for (const cookie of Array.isArray(cookies) ? cookies : [cookies]) {
-      outHeaders.append('set-cookie', cookie);
-    }
-  }
-
-  const body = injected.rawPayload.length ? new Uint8Array(injected.rawPayload) : null;
-  return new Response(body, { status: injected.statusCode, headers: outHeaders });
 }
 
-export const GET = handle;
-export const POST = handle;
-export const PUT = handle;
-export const PATCH = handle;
-export const DELETE = handle;
-export const OPTIONS = handle;
-export const HEAD = handle;
+export const GET = dispatch;
+export const POST = dispatch;
+export const PATCH = dispatch;
+export const PUT = dispatch;
+export const DELETE = dispatch;
+export const HEAD = dispatch;
+export const OPTIONS = async () =>
+  new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });

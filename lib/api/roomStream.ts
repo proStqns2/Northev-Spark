@@ -9,10 +9,8 @@ import type { SessionUser } from '@/lib/auth/session';
 /**
  * Flux d'événements d'une salle de travail.
  *
- * Le même producteur alimente deux transports :
- *   - le SSE du serveur Node autonome (`server/api/routes/rooms.ts`) ;
- *   - le flux `ReadableStream` de la fonction Vercel
- *     (`app/api/rooms/[code]/events/route.ts`).
+ * Producteur unique, servi par le flux `ReadableStream` de
+ * `app/api/rooms/[code]/events/route.ts` — donc entièrement dans Next.js.
  *
  * Chaque appel à `poll()` relit la salle et ne renvoie que ce qui a changé
  * (présence, curseurs, révision, dernier message), ce qui permet à plusieurs

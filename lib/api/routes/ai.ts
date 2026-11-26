@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { z } from 'zod';
 import { userKeyInfo, userSealedKey } from '@/lib/db/repo';
 import { aiSchema, circuitDocSchema } from '@/lib/validation';
@@ -42,8 +43,8 @@ const schemaBodySchema = z.object({
   shape: z.enum(['thevenin', 'norton', 'auto']).optional(),
 });
 
-export async function registerAiRoutes(app: FastifyInstance) {
-  app.get('/api/ai', async (_request, reply) => {
+export const aiRoutes: ApiRoute[] = [
+['GET', '/api/ai', async (_request, reply) => {
     return reply.send({
       agents: AGENTS,
       providers: {
@@ -52,9 +53,9 @@ export async function registerAiRoutes(app: FastifyInstance) {
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
       },
     });
-  });
+  }],
 
-  app.post('/api/ai', async (request, reply) => {
+  ['POST', '/api/ai', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) {
       return fail(reply, 401, 'Le hub d’agents IA est réservé aux comptes connectés.');
@@ -74,9 +75,9 @@ export async function registerAiRoutes(app: FastifyInstance) {
     });
     reply.header('Cache-Control', 'no-store');
     return reply.send({ reply: reply2 });
-  });
+  }],
 
-  app.post('/api/ai/balance', async (request, reply) => {
+  ['POST', '/api/ai/balance', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) {
       return fail(reply, 401, 'Connectez-vous pour rééquilibrer un montage.');
@@ -88,9 +89,9 @@ export async function registerAiRoutes(app: FastifyInstance) {
     const result = rebalanceDoc(parsed.data.doc as CircuitDoc);
     reply.header('Cache-Control', 'no-store');
     return reply.send(result);
-  });
+  }],
 
-  app.get('/api/ai/schema', async (request, reply) => {
+  ['GET', '/api/ai/schema', async (request, reply) => {
     const status = geminiStatus();
     const user = await currentUser(request);
     const personal = user ? (await userKeyInfo(user.id)).gemini : null;
@@ -103,9 +104,9 @@ export async function registerAiRoutes(app: FastifyInstance) {
       reason: status.configured || personal ? undefined : status.reason,
       provider: 'gemini',
     });
-  });
+  }],
 
-  app.post('/api/ai/schema', async (request, reply) => {
+  ['POST', '/api/ai/schema', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) {
       return fail(reply, 401, 'Connectez-vous pour utiliser l’assistant Gemini.');
@@ -139,5 +140,6 @@ export async function registerAiRoutes(app: FastifyInstance) {
     );
     reply.header('Cache-Control', 'no-store');
     return reply.code(result.error ? 502 : 200).send(result);
-  });
-}
+  }]
+];
+

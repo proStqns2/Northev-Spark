@@ -1,10 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { TEMPLATES, FAMILY_LABEL } from '@/lib/data/templates';
 import { cachedEquivalent } from '@/lib/cache';
 import { abs } from '@/lib/engine/complex';
 
-export async function registerTemplateRoutes(app: FastifyInstance) {
-  app.get('/api/templates', async (_request, reply) => {
+export const templateRoutes: ApiRoute[] = [
+['GET', '/api/templates', async (_request, reply) => {
     const items = TEMPLATES.map((t) => {
       const doc = t.build();
       const eq = cachedEquivalent(doc);
@@ -32,5 +33,6 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
       };
     });
     return reply.send({ templates: items });
-  });
-}
+  }]
+];
+

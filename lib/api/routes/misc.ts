@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { providerStatus } from '@/lib/ai/providers';
 import { cloudEnabled } from '@/lib/db/supabase';
 import { TEMPLATES } from '@/lib/data/templates';
@@ -8,87 +9,6 @@ import { templateDoc } from '@/lib/data/loadDoc';
 import { cachedEquivalent } from '@/lib/cache';
 import { abs } from '@/lib/engine/complex';
 import { bodyOf, fail } from '../helpers';
-
-export async function registerMiscRoutes(app: FastifyInstance) {
-  app.get('/api/health', async (_request, reply) => {
-    const providers = providerStatus();
-    return reply.send({
-      ok: true,
-      app: 'northev-spark',
-      version: '1.0.0',
-      engine: 'MNA complexe — continu & sinusoïdal établi',
-      templates: TEMPLATES.length,
-      integrations: {
-        supabase: cloudEnabled(),
-        openai: providers.openai,
-        gemini: providers.gemini,
-        localAgents: true,
-      },
-      time: new Date().toISOString(),
-    });
-  });
-
-  app.post('/api/import', async (request, reply) => {
-    const body = bodyOf<{ text?: string; doc?: unknown; name?: string; fromTemplate?: string }>(request);
-
-    if (body.fromTemplate) {
-      const doc = templateDoc(body.fromTemplate);
-      if (!doc) return fail(reply, 404, 'Gabarit introuvable.');
-      if (body.name) doc.name = body.name;
-      const eq = cachedEquivalent(doc);
-      return reply.send({
-        doc,
-        stats: {
-          components: doc.components.length,
-          equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
-        },
-      });
-    }
-
-    if (body.doc) {
-      const parsed = importSchema.safeParse({ doc: body.doc, name: body.name, fromTemplate: body.fromTemplate });
-      if (!parsed.success) return fail(reply, 422, 'Document JSON invalide.');
-      const doc = parsed.data.doc as CircuitDoc;
-      if (body.name) doc.name = body.name;
-      const eq = cachedEquivalent(doc);
-      return reply.send({
-        doc,
-        stats: {
-          components: doc.components.length,
-          equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
-        },
-      });
-    }
-
-    const text = (body.text ?? '').trim();
-    if (!text) {
-      return fail(reply, 422, 'Collez un export JSON ou une liste de composants (référence, A, B, valeur).');
-    }
-
-    try {
-      const maybeJson = JSON.parse(text);
-      const parsed = circuitDocSchema.safeParse(maybeJson?.doc ?? maybeJson);
-      if (parsed.success) {
-        const doc = parsed.data as CircuitDoc;
-        if (body.name) doc.name = body.name;
-        const eq = cachedEquivalent(doc);
-        return reply.send({
-          doc,
-          stats: {
-            components: doc.components.length,
-            equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
-          },
-        });
-      }
-    } catch {
-      // pas du JSON → format texte
-    }
-
-    const result = parseTextImport(text, body.name);
-    if ('error' in result) return fail(reply, 422, result.error, { warnings: result.warnings });
-    return reply.send(result);
-  });
-}
 
 const KIND_ALIASES: Record<string, keyof typeof COMPONENT_META> = {
   r: 'resistor', resistor: 'resistor', resistance: 'resistor', resistorc: 'resistor',
@@ -213,3 +133,85 @@ function parseTextImport(text: string, forcedName?: string): ImportOk | ImportEr
     warnings,
   };
 }
+
+export const miscRoutes: ApiRoute[] = [
+['GET', '/api/health', async (_request, reply) => {
+    const providers = providerStatus();
+    return reply.send({
+      ok: true,
+      app: 'northev-spark',
+      version: '1.0.0',
+      engine: 'MNA complexe — continu & sinusoïdal établi',
+      templates: TEMPLATES.length,
+      integrations: {
+        supabase: cloudEnabled(),
+        openai: providers.openai,
+        gemini: providers.gemini,
+        localAgents: true,
+      },
+      time: new Date().toISOString(),
+    });
+  }],
+
+  ['POST', '/api/import', async (request, reply) => {
+    const body = bodyOf<{ text?: string; doc?: unknown; name?: string; fromTemplate?: string }>(request);
+
+    if (body.fromTemplate) {
+      const doc = templateDoc(body.fromTemplate);
+      if (!doc) return fail(reply, 404, 'Gabarit introuvable.');
+      if (body.name) doc.name = body.name;
+      const eq = cachedEquivalent(doc);
+      return reply.send({
+        doc,
+        stats: {
+          components: doc.components.length,
+          equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
+        },
+      });
+    }
+
+    if (body.doc) {
+      const parsed = importSchema.safeParse({ doc: body.doc, name: body.name, fromTemplate: body.fromTemplate });
+      if (!parsed.success) return fail(reply, 422, 'Document JSON invalide.');
+      const doc = parsed.data.doc as CircuitDoc;
+      if (body.name) doc.name = body.name;
+      const eq = cachedEquivalent(doc);
+      return reply.send({
+        doc,
+        stats: {
+          components: doc.components.length,
+          equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
+        },
+      });
+    }
+
+    const text = (body.text ?? '').trim();
+    if (!text) {
+      return fail(reply, 422, 'Collez un export JSON ou une liste de composants (référence, A, B, valeur).');
+    }
+
+    try {
+      const maybeJson = JSON.parse(text);
+      const parsed = circuitDocSchema.safeParse(maybeJson?.doc ?? maybeJson);
+      if (parsed.success) {
+        const doc = parsed.data as CircuitDoc;
+        if (body.name) doc.name = body.name;
+        const eq = cachedEquivalent(doc);
+        return reply.send({
+          doc,
+          stats: {
+            components: doc.components.length,
+            equivalent: eq.ok ? { vth: abs(eq.vth), rth: abs(eq.rth), inorton: abs(eq.inorton) } : null,
+          },
+        });
+      }
+    } catch {
+      // pas du JSON → format texte
+    }
+
+    const result = parseTextImport(text, body.name);
+    if ('error' in result) return fail(reply, 422, result.error, { warnings: result.warnings });
+    return reply.send(result);
+  }]
+];
+

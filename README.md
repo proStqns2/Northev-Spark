@@ -163,40 +163,39 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 
 ---
 
-## Trois couches techniques
+## Une seule application : Next.js + React
 
-| Couche | Rôle | Dossier | Port |
-|---|---|---|---|
-| **Next.js 15** | site et studio (frontend uniquement, relaie `/api/*`) | `app/`, `components/` | 3000 |
-| **Node.js + Fastify** | backend unifié : API REST, solveur, IA, comptes, SSE, WebSocket | `server/api/`, `lib/` | 4100 |
-| **Angular 20** | atelier collaboratif (signals, zoneless) | `angular-workshop/` | 4300 |
+| Couche | Rôle | Dossier |
+|---|---|---|
+| **Next.js 15 (App Router)** | pages React, studio, ateliers | `app/`, `components/` |
+| **Route handlers Next** | API REST native : comptes, montages, projets, IA, solveur | `app/api/[...path]/route.ts`, `lib/api/routes/` |
+| **Moteur + données** | MNA complexe, agents IA, persistance Supabase | `lib/` |
 
-Le backend Node possède toute la logique métier (il réutilise `lib/` : moteur
-MNA, agents IA, chiffrement, persistance Supabase). Next.js n'est qu'un
-frontend : ses appels `/api/*` sont relayés vers le backend par un `rewrite`
-(voir `next.config.mjs`). Angular se connecte au même backend par son proxy
-(`/rt` → WebSocket + REST invité).
+Il n'y a **plus de serveur annexe ni de second frontend** : le site entier —
+interface React, contrôle des accès, API, flux temps réel — vit dans cette
+application Next.js. Une commande suffit :
 
 ```bash
-npm run api                      # backend Node → http://localhost:4100
-npm run dev                      # Next.js      → http://localhost:3000
-cd angular-workshop && npm i && npm start   # Angular → http://localhost:4300
+npm run dev      # http://localhost:3000  (site + API)
+npm run build && npm start
 ```
 
-Le backend expose :
+L'API est répartie dans `lib/api/routes/*.ts` sous forme de tables
+`[verbe, chemin, handler]`, exécutées par le route handler
+`app/api/[...path]/route.ts` (`Request` → `Response` Web). Aucun port
+supplémentaire n'est ouvert, aucun proxy n'intervient : ce que le navigateur
+appelle sous `/api/*` est exécuté dans le même processus que le rendu React.
 
-- **REST** : `/api/auth/*`, `/api/circuits`, `/api/solve`, `/api/ai/*`,
-  `/api/templates`, `/api/profile/*`, `/api/projects/*`, `/api/rooms/*`,
-  `/api/import`, `/api/health` ;
-- **SSE** : `/api/rooms/:code/events` (salles de compte : présence, curseurs,
-  révisions, chat) ;
-- **WebSocket** : `/rt/ws/:code` (salles invitées de l'atelier Angular), avec
-  repli REST sous `/rt/api/rooms*`.
+Routes exposées : `/api/auth/*`, `/api/circuits`, `/api/projects/*`,
+`/api/solve`, `/api/ai/*`, `/api/templates`, `/api/profile/*`, `/api/rooms/*`,
+`/api/import`, `/api/health`.
 
-En production, déployez le backend sur un hébergeur Node (Render, Railway,
-Fly.io…) et pointez `API_URL` dessus pour le frontend Next.js ; les variables
-(`SECRET_KEY`, `SUPABASE_*`, clés IA) vivent dans `.env.local`, chargées par
-le backend au démarrage.
+Temps réel : `/api/rooms/:code/events` (SSE — présence, curseurs, révisions,
+chat) et le canal `BroadcastChannel` côté navigateur, tous deux dans Next.
+
+En production, le même build se déploie tel quel sur Vercel : `next build`
+puis fonctions serverless, les variables (`SECRET_KEY`, `SUPABASE_*`, clés IA)
+étant fournies par l'environnement.
 
 ### Symboles normalisés
 
@@ -208,7 +207,7 @@ résistance R, condensateur C, source E, source i) ont été copiées dans
 - résistance = **rectangle** CEI (et non zigzag), bobine = 4 arches + noyau,
   condensateur = deux armatures, source de courant = cercle + flèche traversante ;
 - le même dessin sert dans la palette **Build Box**, sur la grille, dans les
-  exports PNG/SVG/HTML (`lib/studio/symbolSvg.ts`) et dans le client Angular ;
+  exports PNG/SVG/HTML (`lib/studio/symbolSvg.ts`) ;
 - la page `/symboles` présente chaque capture à côté de sa version vectorielle.
 
 La palette **Build Box** (`components/studio/BuildBox.tsx`) reprend la mise en
@@ -303,7 +302,7 @@ lib/
   db/                   store JSON, dépôt, Supabase
   auth/                 scrypt, sessions, thèmes
 server/                 serveur temps réel Node (WebSocket natif + API REST)
-angular-workshop/       client Angular de l'atelier collaboratif
+lib/api/                routes API natives servies par Next.js
 public/symbols/         captures de référence des symboles du cours
 public/brand/           logo isométrique (512/192, version sombre)
 public/agents/tiles/    les 10 emblèmes d'agents extraits de la planche

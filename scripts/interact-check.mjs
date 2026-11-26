@@ -57,7 +57,9 @@ async function open(page, selector, action, label) {
 
 await open('/compte?mode=connexion', 'button:nth-of-type(1)', (el) => el.click(), 'compte : onglets');
 await open('/bibliotheque', 'input[type="search"], input[placeholder]', (el, win) => {
-  el.value = 'norton';
+  // React suit la valeur via son propre descripteur : il faut le setter natif
+  const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+  setter.call(el, 'norton');
   el.dispatchEvent(new win.Event('input', { bubbles: true }));
 }, 'bibliothèque : recherche');
 await open('/studio', 'svg', () => {}, 'studio : rendu canvas');

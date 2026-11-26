@@ -1,15 +1,12 @@
 import { findRoom } from '@/lib/db/repo';
-import { currentUser } from '@/server/api/helpers';
-import { CURSOR_TTL, TICK_MS, openRoomStream } from '@/server/api/roomStream';
-import type { FastifyRequest } from 'fastify';
+import { currentUserFromHeaders } from '@/lib/api/helpers';
+import { CURSOR_TTL, TICK_MS, openRoomStream } from '@/lib/api/roomStream';
 
 /**
  * Flux Server-Sent Events d'un atelier, servi directement par Next.
  *
- * Le serveur autonome ne peut pas être joint sur Vercel : ce flux remplace le
- * sien en réutilisant exactement le même producteur d'événements
- * (`server/api/roomStream.ts`). L'état partagé est relu à chaque battement,
- * donc deux instances serverless différentes diffusent la même salle.
+ * L'état partagé est relu à chaque battement, donc deux instances
+ * différentes diffusent la même salle.
  */
 
 export const runtime = 'nodejs';
@@ -22,10 +19,7 @@ export async function GET(
 ): Promise<Response> {
   const { code } = await context.params;
 
-  // `currentUser` attend un objet minimal de type FastifyRequest : les routes
-  // lisent seulement les en-têtes.
-  const fakeRequest = { headers: Object.fromEntries(request.headers) } as unknown as FastifyRequest;
-  const user = await currentUser(fakeRequest);
+  const user = await currentUserFromHeaders(request.headers);
   if (!user) return Response.json({ error: 'Non authentifié' }, { status: 401 });
 
   const room = await findRoom(code);

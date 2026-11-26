@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { ApiRoute } from '../http';
+
 import { z } from 'zod';
 import {
   addProjectMember,
@@ -40,8 +41,8 @@ const memberSchema = z.object({
   role: z.enum(['editor', 'viewer']).optional(),
 });
 
-export async function registerProjectRoutes(app: FastifyInstance) {
-  app.get('/api/projects', async (request, reply) => {
+export const projectRoutes: ApiRoute[] = [
+['GET', '/api/projects', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const projects = await listProjects(user.id);
@@ -54,9 +55,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
       })),
       templates: TEMPLATES.map((t) => ({ slug: t.slug, title: t.title, subtitle: t.subtitle, accent: t.accent })),
     });
-  });
+  }],
 
-  app.post('/api/projects', async (request, reply) => {
+  ['POST', '/api/projects', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const parsed = createSchema.safeParse(bodyOf(request));
@@ -89,9 +90,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
       });
     }
     return reply.code(201).send({ project });
-  });
+  }],
 
-  app.get('/api/projects/:id', async (request, reply) => {
+  ['GET', '/api/projects/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -123,9 +124,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
         preview: c.doc,
       })),
     });
-  });
+  }],
 
-  app.patch('/api/projects/:id', async (request, reply) => {
+  ['PATCH', '/api/projects/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -134,18 +135,18 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     const ok = await updateProject(id, user.id, parsed.data);
     if (!ok) return fail(reply, 403, 'Modification refusée.');
     return reply.send({ ok: true });
-  });
+  }],
 
-  app.delete('/api/projects/:id', async (request, reply) => {
+  ['DELETE', '/api/projects/:id', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
     const ok = await deleteProject(id, user.id);
     if (!ok) return fail(reply, 403, 'Suppression réservée au propriétaire.');
     return reply.send({ ok: true });
-  });
+  }],
 
-  app.post('/api/projects/:id/circuits', async (request, reply) => {
+  ['POST', '/api/projects/:id/circuits', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -153,9 +154,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     if (!parsed.success) return fail(reply, 422, 'Sélection invalide.');
     const moved = await attachCircuitsToProject(id, user.id, parsed.data.circuitIds);
     return reply.send({ moved });
-  });
+  }],
 
-  app.post('/api/projects/:id/members', async (request, reply) => {
+  ['POST', '/api/projects/:id/members', async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
     const { id } = request.params as { id: string };
@@ -180,5 +181,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     });
     if (!ok) return fail(reply, 403, 'Invitation impossible (droits insuffisants).');
     return reply.send({ ok: true, member: { id: target.id, name: target.name } });
-  });
-}
+  }]
+];
+
