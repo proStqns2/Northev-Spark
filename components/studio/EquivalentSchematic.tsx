@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import { ArrowLeftRight, Zap } from 'lucide-react';
 import { EquivalentResult } from '@/lib/engine/equivalent';
 import { formatPhasor, formatSI } from '@/lib/engine/format';
-import { abs, add, cx, div, mul } from '@/lib/engine/complex';
+import { abs } from '@/lib/engine/complex';
+import { loadEquivalent } from '@/lib/engine/load';
 import { NormSymbol, NormSymbolDefs } from './symbols/NormSymbol';
 
 /**
@@ -103,14 +104,7 @@ export function EquivalentSchematic({
 
   const load = useMemo(() => {
     if (!equivalent.ok) return null;
-    const zth = equivalent.rth;
-    const denom = add(zth, cx(rl, 0));
-    const iL = div(equivalent.vth, denom);
-    const uL = mul(iL, cx(rl, 0));
-    const pL = abs(iL) * abs(iL) * rl;
-    const zAbs = abs(zth);
-    const pMax = (abs(equivalent.vth) * abs(equivalent.vth)) / (4 * Math.max(zAbs, 1e-12));
-    return { uL, iL, pL, pMax, zAbs, atMax: Math.abs(rl - zAbs) / Math.max(zAbs, 1e-9) < 0.05 };
+    return loadEquivalent(equivalent.vth, equivalent.rth, rl);
   }, [equivalent, rl]);
 
   if (!equivalent.ok) {
@@ -237,7 +231,7 @@ export function EquivalentSchematic({
             ) : (
               <>
                 U<sub>L</sub> = U<sub>th</sub> · R<sub>L</sub> / (Z<sub>th</sub> + R<sub>L</sub>) · P_max ={' '}
-                {formatSI(load.pMax, 'W', { digits: 3 })} à R<sub>L</sub> = {formatSI(load.zAbs, 'Ω', { digits: 3 })}
+                {formatSI(load.pMax, 'W', { digits: 3 })} à R<sub>L</sub> = {formatSI(load.zthMagnitude, 'Ω', { digits: 3 })}
               </>
             )}
           </p>

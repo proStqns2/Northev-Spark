@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { equivalentOf } from './equivalent';
 import { solveDocument } from './solver';
 import { abs, arg, cx } from './complex';
+import { loadEquivalent } from './load';
 import type { CircuitDoc, Component } from './types';
 
 const node = (x: number, y: number) => `${x},${y}`;
@@ -205,5 +206,43 @@ describe('MNA — équivalent Thévenin / Norton', () => {
     approx(abs(sol.nodeVoltages[node(2, 1)]), 6);
     approx(abs(sol.readings.R1.i), 0.006);
     approx(abs(sol.readings.R2.v), 6);
+  });
+});
+
+describe('simulateur de charge R_L', () => {
+  it('diviseur chargé : U_th, Z_th puis R_L = Z_th donne la moitié', () => {
+    // U_th = 6 V, Z_th = 500 Ω (diviseur 1 kΩ / 1 kΩ sur 12 V)
+    const vth = cx(6, 0);
+    const zth = cx(500, 0);
+
+    // charge ouverte (R_L énorme) → U_L ≈ U_th
+    approx(loadEquivalent(vth, zth, 1e9).uL.re, 6, 1e-6);
+
+    // R_L = Z_th → adaptation : U_L = U_th / 2, P_L = P_max
+    const matched = loadEquivalent(vth, zth, 500);
+    approx(matched.uL.re, 3);
+    approx(abs(matched.iL), 0.006);
+    approx(matched.pL, 0.018);
+    assert.equal(matched.atMax, true);
+
+    // P_max = U_th² / (4 Z_th) = 36 / 2000 = 18 mW
+    approx(matched.pMax, 0.018);
+    approx(matched.pL, matched.pMax);
+
+    // court-circuit franc → U_L = 0, I_L = I_N
+    approx(loadEquivalent(vth, zth, 0).uL.re, 0);
+    approx(abs(loadEquivalent(vth, zth, 0).iL), 0.012);
+  });
+
+  it('charge AC : R_L en série avec Z_th complexe', () => {
+    // Z_th = 300 + j400 (|Z| = 500), U_th = 10 V
+    const vth = cx(10, 0);
+    const zth = cx(300, 400);
+    const load = loadEquivalent(vth, zth, 500);
+    approx(load.zthMagnitude, 500);
+    // |I| = 10 / |300+j400 + 500| = 10 / |800+j400| = 10 / 894,427
+    approx(abs(load.iL), 10 / Math.hypot(800, 400));
+    approx(load.pL, abs(load.iL) ** 2 * 500);
+    assert.equal(load.atMax, true);
   });
 });
