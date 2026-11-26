@@ -28,6 +28,7 @@ import { CircuitThumbnail } from '@/components/studio/CircuitCanvas';
 import { cn, downloadBlob } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { TEMPLATES } from '@/lib/data/templates';
+import { loadWorkspace } from '@/lib/studio/library';
 
 interface Props {
   user: { id: string; name: string } | null;
@@ -37,7 +38,7 @@ interface Props {
 }
 
 export function PremiumClient({ user, circuitDoc, circuitName, providers }: Props) {
-  const initialDoc = useMemo<CircuitDoc | null>(() => {
+  const bundledDoc = useMemo<CircuitDoc | null>(() => {
     if (circuitDoc) {
       try {
         return JSON.parse(circuitDoc) as CircuitDoc;
@@ -45,11 +46,31 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
         return null;
       }
     }
-    const fallback = TEMPLATES.find((t) => t.slug === 'equivalence-tn') ?? TEMPLATES[0];
-    return fallback.build();
+    return null;
   }, [circuitDoc]);
 
-  const [doc, setDoc] = useState<CircuitDoc | null>(initialDoc);
+  const [doc, setDoc] = useState<CircuitDoc | null>(bundledDoc);
+  const [source, setSource] = useState<'circuit' | 'brouillon' | 'exemple'>(
+    bundledDoc ? 'circuit' : 'exemple',
+  );
+
+  /**
+   * Sans montage passé en URL, on lit le brouillon du studio (localStorage)
+   * pour que les agents analysent ce que l'utilisateur vient de construire,
+   * et non un exemple génériques. À défaut, un gabarit calculable.
+   */
+  useEffect(() => {
+    if (bundledDoc) return;
+    const workspace = loadWorkspace();
+    if (workspace && workspace.components.length) {
+      setDoc(workspace);
+      setSource('brouillon');
+      return;
+    }
+    const fallback = TEMPLATES.find((t) => t.slug === 'equivalence-tn') ?? TEMPLATES[0];
+    setDoc(fallback.build());
+    setSource('exemple');
+  }, [bundledDoc]);
   const [selected, setSelected] = useState<AgentId>('theo');
   const [task, setTask] = useState<string>('equivalence');
   const [question, setQuestion] = useState('');
@@ -325,7 +346,13 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
                   <p className="text-[13px] font-medium">{agent.name} est prêt.</p>
                   <p className="mt-1 max-w-sm text-[11.5px] leading-relaxed text-fg-mute">
                     Lancez une tâche ci-dessus, ou posez une question précise sur le montage chargé
-                    {circuitName ? ` (« ${circuitName} »)` : ' (gabarit d’exemple)'}.
+                    {doc?.name ? ` (« ${doc.name} »` : ' ('}
+                    {source === 'brouillon'
+                      ? ' — votre brouillon du studio'
+                      : source === 'circuit'
+                        ? ' — circuit enregistré'
+                        : ' — gabarit d’exemple'}
+                    ).
                   </p>
                 </div>
                 <button type="button" onClick={() => run()} disabled={loading} className="btn btn-primary btn-sm">

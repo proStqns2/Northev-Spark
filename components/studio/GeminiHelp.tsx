@@ -135,11 +135,14 @@ export function GeminiHelp({
               <Sparkles size={16} />
             </span>
             <div>
-              <p className="text-[14px] font-semibold">Assistant Gemini</p>
+              <p className="text-[14px] font-semibold">Assistant IA du studio</p>
               <p className="text-[11px] text-fg-mute">
                 {configured ? (
                   <>
-                    Modèle <span className="font-mono text-fg-soft">{model}</span> · clé côté serveur uniquement
+                    Modèle <span className="font-mono text-fg-soft">{model}</span> · clé côté serveur uniquement ·{' '}
+                    <a href="/compte?onglet=cles" className="underline decoration-dotted hover:text-fg-soft">
+                      gérer mes clés
+                    </a>
                   </>
                 ) : (
                   'Clé Gemini non configurée sur ce serveur'
@@ -165,8 +168,15 @@ export function GeminiHelp({
                 envoyée au navigateur.
               </p>
               <p className="mt-2 text-[10.5px] text-fg-mute">
-                Le bouton « Rééquilibrer » reste utilisable sans clé : il fonctionne avec le moteur local.
+                Le bouton « Rééquilibrer » reste utilisable sans clé : il fonctionne avec le moteur local, qui
+                garantit l’exactitude du résultat même sans modèle de langage.
               </p>
+              <a
+                href="/compte?onglet=cles"
+                className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-medium text-spark-cyan underline decoration-dotted hover:text-fg"
+              >
+                Enregistrer ma propre clé Gemini ou OpenRouter →
+              </a>
             </div>
           ) : null}
 

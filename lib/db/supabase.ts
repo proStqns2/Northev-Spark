@@ -49,6 +49,9 @@ export async function backfillUser(user: StoredUser): Promise<void> {
       avatar: user.avatar,
       theme: user.theme,
       role: user.role,
+      password_hash: user.passwordHash,
+      bio: user.bio ?? null,
+      institution: user.institution ?? null,
       created_at: user.createdAt,
       last_seen_at: new Date().toISOString(),
     },
@@ -57,6 +60,45 @@ export async function backfillUser(user: StoredUser): Promise<void> {
   if (error && !isMissingTable(error)) {
     console.warn('[supabase] profiles upsert:', error.message);
   }
+}
+
+/**
+ * Relit un profil depuis Supabase.
+ *
+ * Indispensable en production : le système de fichiers du serveur (où vit
+ * `.data/db.json`) est éphémère sur Vercel. Sans cette lecture, un compte créé
+ * avant un redéploiement devient introuvable et la connexion échoue.
+ */
+export async function pullUserByEmail(email: string): Promise<StoredUser | null> {
+  const sb = supabaseAdmin();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from('profiles')
+    .select('id,email,name,avatar,theme,role,password_hash,bio,institution,created_at,last_seen_at')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+  if (error) {
+    if (!isMissingTable(error)) console.warn('[supabase] profiles select:', error.message);
+    return null;
+  }
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  // une base antérieure sans password_hash ne peut pas authentifier : on ignore
+  if (typeof row.password_hash !== 'string' || !row.password_hash) return null;
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    name: String(row.name ?? ''),
+    avatar: String(row.avatar ?? 'circuit'),
+    theme: (row.theme as StoredUser['theme']) ?? 'nuit',
+    role: (row.role as StoredUser['role']) ?? 'user',
+    passwordHash: row.password_hash,
+    bio: (row.bio as string) ?? undefined,
+    institution: (row.institution as string) ?? undefined,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    lastSeenAt: String(row.last_seen_at ?? new Date().toISOString()),
+    prefs: { grid: true, animation: true, electronSpeed: 1, digits: 4 },
+  };
 }
 
 export async function pushCircuit(circuit: StoredCircuit): Promise<void> {

@@ -13,7 +13,9 @@ import {
 import { hashPassword, inviteCode, sha256, verifyPassword } from '@/lib/auth/crypto';
 import { sessionTtlMs } from '@/lib/auth/config';
 import { SessionUser } from '@/lib/auth/session';
-import { backfillUser, cloudEnabled, pullCircuits, pushCircuit } from './supabase';
+import { backfillUser, cloudEnabled, pullCircuits, pullUserByEmail, pushCircuit } from './supabase';
+
+const AVATARS = ['circuit', 'bolt', 'oscillo', 'resistor', 'magnet', 'chip', 'photon', 'wave'];
 
 const publicUser = (u: StoredUser): SessionUser => ({
   id: u.id,
@@ -42,7 +44,7 @@ export async function createUser(input: {
 }): Promise<{ user: StoredUser } | { error: string; code: string }> {
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
-  const existing = await findUserByEmail(email);
+  const existing = await findOrRestoreUser(email);
   if (existing) return { error: 'Un compte existe déjà avec cette adresse.', code: 'email_taken' };
 
   const now = new Date().toISOString();
@@ -51,7 +53,8 @@ export async function createUser(input: {
     email,
     name,
     passwordHash: hashPassword(input.password),
-    avatar: 'circuit',
+    // avatar choisi de façon déterministe : deux comptes ne se ressemblent pas
+    avatar: AVATARS[createHash('sha256').update(email).digest()[0] % AVATARS.length],
     theme: 'nuit',
     role: 'user',
     createdAt: now,
@@ -66,8 +69,28 @@ export async function createUser(input: {
   return { user };
 }
 
+/**
+ * Retrouve un compte, y compris après un redéploiement.
+ *
+ * Le stockage local (`.data/db.json`) est éphémère sur un hébergement
+ * serverless : si le compte n'est plus en mémoire, on le relit depuis
+ * Supabase et on le réinsère localement (les sessions restent valides).
+ */
+async function findOrRestoreUser(email: string): Promise<StoredUser | undefined> {
+  const local = await findUserByEmail(email);
+  if (local) return local;
+  const remote = await pullUserByEmail(email);
+  if (!remote) return undefined;
+  await transaction((db) => {
+    if (!db.users.some((u) => u.id === remote.id || u.email === remote.email)) {
+      db.users.push(remote);
+    }
+  });
+  return remote;
+}
+
 export async function authenticate(email: string, password: string): Promise<StoredUser | null> {
-  const user = await findUserByEmail(email);
+  const user = await findOrRestoreUser(email);
   if (!user) return null;
   if (!verifyPassword(password, user.passwordHash)) return null;
   await transaction((db) => {

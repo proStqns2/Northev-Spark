@@ -59,11 +59,12 @@ interface Props {
   user: SessionUser | null;
   circuits: CircuitItem[];
   cloud: boolean;
+  initialTab?: (typeof TABS)[number]['id'];
 }
 
-export function AccountClient({ mode, user, circuits: initialCircuits, cloud }: Props) {
+export function AccountClient({ mode, user, circuits: initialCircuits, cloud, initialTab = 'historique' }: Props) {
   if (mode === 'profile' && user) {
-    return <ProfileView user={user} initialCircuits={initialCircuits} cloud={cloud} />;
+    return <ProfileView user={user} initialCircuits={initialCircuits} cloud={cloud} initialTab={initialTab} />;
   }
   return (
     <AuthView
@@ -387,6 +388,7 @@ function ApiKeysPanel() {
     vault: boolean;
     serverGemini: boolean;
     keys: { gemini: { fingerprint: string; updatedAt: string } | null; openai: { fingerprint: string; updatedAt: string } | null };
+    providers?: { gemini: boolean; openrouter: boolean; openai: boolean };
   } | null>(null);
   const [drafts, setDrafts] = useState({ gemini: '', openai: '' });
   const [busy, setBusy] = useState<'gemini' | 'openai' | null>(null);
@@ -445,6 +447,35 @@ function ApiKeysPanel() {
           Votre clé permet au bouton <strong className="text-fg-soft">Gemini</strong> du studio de générer des schémas
           équivalents avec votre propre quota. Elle est chiffrée en AES-256-GCM et n’est jamais renvoyée au navigateur.
         </p>
+
+        {info ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(
+              [
+                { id: 'gemini', label: 'Gemini', on: info.providers?.gemini },
+                { id: 'openrouter', label: 'OpenRouter', on: info.providers?.openrouter },
+                { id: 'openai', label: 'OpenAI', on: info.providers?.openai },
+              ] as const
+            ).map((item) => (
+              <span
+                key={item.id}
+                className={cn(
+                  'chip font-mono text-[10px]',
+                  item.on
+                    ? 'border-spark-green/40 bg-spark-green/10 text-spark-green'
+                    : 'border-line/60 text-fg-mute',
+                )}
+                title={
+                  item.on
+                    ? 'Ce fournisseur répondra : clé serveur ou clé personnelle présente.'
+                    : 'Aucune clé pour ce fournisseur : les agents répondent alors avec le moteur local.'
+                }
+              >
+                {item.on ? '●' : '○'} {item.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {info && !info.vault ? (
           <p className="mt-2 rounded-lg border border-spark-amber/40 bg-spark-amber/[0.07] p-2 text-[10.5px] text-spark-amber">
@@ -549,12 +580,14 @@ function ProfileView({
   user,
   initialCircuits,
   cloud,
+  initialTab = 'historique',
 }: {
   user: SessionUser;
   initialCircuits: CircuitItem[];
   cloud: boolean;
+  initialTab?: (typeof TABS)[number]['id'];
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('historique');
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>(initialTab);
   const [circuits, setCircuits] = useState(initialCircuits);
   const [query, setQuery] = useState('');
   const [onlyStarred, setOnlyStarred] = useState(false);

@@ -792,8 +792,8 @@ export function CircuitCanvas({
           <div className="max-w-xs rounded-2xl border border-dashed border-line/70 bg-ink-950/60 px-5 py-4 text-center backdrop-blur">
             <p className="text-sm font-medium text-fg">Grille vide</p>
             <p className="mt-1 text-xs leading-relaxed text-fg-mute">
-              Choisissez un dipôle dans la palette de gauche, puis glissez sur la grille pour le tracer.
-              Ajoutez ensuite la masse et les bornes A / B.
+              Choisissez un dipôle dans la palette de gauche, puis <strong className="text-fg-soft">cliquez deux nœuds</strong> de la
+              grille : le premier fixe le départ, le second termine le tracé. Ajoutez ensuite la masse et les bornes A / B.
             </p>
           </div>
         </div>

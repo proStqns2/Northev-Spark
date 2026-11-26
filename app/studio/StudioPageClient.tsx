@@ -13,6 +13,8 @@ interface Props {
   circuitId?: string;
   templateSlug?: string;
   templateDocJson: string | null;
+  /** vrai quand le montage d'amorçage est proposé (aucun gabarit demandé) */
+  seeded?: boolean;
   projectOptions?: Array<{ id: string; name: string; color: string }>;
   initialProjectId?: string;
   templates: Array<{
@@ -30,6 +32,7 @@ export function StudioPageClient({
   circuitId,
   templateSlug,
   templateDocJson,
+  seeded = false,
   templates,
   projectOptions = [],
   initialProjectId,
@@ -93,6 +96,27 @@ export function StudioPageClient({
             aria-label="Masquer"
           >
             <X size={12} />
+          </button>
+        </div>
+      ) : null}
+
+      {seeded ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-spark-cyan/30 bg-spark-cyan/[0.06] px-3 py-1.5 text-[11px] text-spark-cyan">
+          <Layers size={12} />
+          <span>
+            Montage d’exemple chargé — <strong className="font-semibold">diviseur R₁–R₂</strong>. Modifiez-le,
+            ou videz la grille pour partir de zéro.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              clearWorkspace();
+              setDoc(emptyDoc());
+              setRestored(false);
+            }}
+            className="ml-auto rounded border border-spark-cyan/40 px-2 py-0.5 font-medium transition hover:bg-spark-cyan/10"
+          >
+            Grille vide
           </button>
         </div>
       ) : null}

@@ -37,13 +37,18 @@ export default async function StudioPage({
   if (!doc && params.template) {
     doc = templateDoc(params.template);
   }
+  // Amorçage : plutôt qu'une grille vide (l'utilisateur ne sait pas quoi faire),
+  // on ouvre sur un montage complet et calculable — il peut le vider d'un geste.
+  const seeded = !doc;
+  const initialDoc = doc ?? templateDoc('thevenin-serie');
 
   return (
     <StudioPageClient
       user={user ? { id: user.id, name: user.name } : null}
       circuitId={params.circuit}
       templateSlug={params.template}
-      templateDocJson={doc ? JSON.stringify(doc) : null}
+      templateDocJson={initialDoc ? JSON.stringify(initialDoc) : null}
+      seeded={seeded}
       projectOptions={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
       initialProjectId={projectId}
       templates={TEMPLATES.map((t) => ({

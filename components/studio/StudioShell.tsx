@@ -418,15 +418,20 @@ export function StudioShell({
             )}
             title={
               geminiConfigured
-                ? `Assistant Gemini (${geminiModel}) : schéma équivalent et rééquilibrage`
-                : 'Assistant Gemini — clé à configurer côté serveur'
+                ? `IA active (${geminiModel}) : schéma équivalent proposé puis vérifié par le solveur`
+                : 'IA non configurée — l’équivalent reste calculé par le solveur local'
             }
           >
             <Sparkles size={13} />
-            <span className="hidden xl:inline">Gemini</span>
-            {geminiConfigured ? (
-              <span className="h-1.5 w-1.5 rounded-full bg-spark-green shadow-[0_0_6px] shadow-spark-green" />
-            ) : null}
+            <span className="hidden xl:inline">{geminiConfigured ? 'Assistant IA' : 'Assistant'}</span>
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                geminiConfigured
+                  ? 'bg-spark-green shadow-[0_0_6px] shadow-spark-green'
+                  : 'bg-spark-amber/70',
+              )}
+            />
           </button>
           {user ? (
             <div className="flex items-center gap-1 rounded-md border border-line/50 pl-1.5">
@@ -560,7 +565,19 @@ export function StudioShell({
             <Users size={13} />
             <span className="hidden sm:inline">Multiwork</span>
           </Link>
-          <Link href="/premium" className="btn btn-sm border-spark-cyan/40 bg-spark-cyan/10 text-spark-cyan">
+          <Link
+            href="/premium"
+            onClick={() => {
+              // le hub d'agents lit ce brouillon : il analysera le montage affiché
+              try {
+                saveWorkspace(doc);
+              } catch {
+                /* quota : le hub retombera sur la dernière version enregistrée */
+              }
+            }}
+            className="btn btn-sm border-spark-cyan/40 bg-spark-cyan/10 text-spark-cyan"
+            title="Faire analyser ce montage par les agents IA"
+          >
             <Sparkles size={13} />
             <span className="hidden sm:inline">Agents</span>
           </Link>
@@ -570,7 +587,7 @@ export function StudioShell({
       {/* ------------------------------------------------------------- workspace */}
       <div className="flex min-h-0 flex-1">
         {/* palette */}
-        <aside className="hidden w-[210px] shrink-0 border-r border-line/60 bg-ink-900/40 lg:flex lg:flex-col">
+        <aside className="hidden w-[188px] shrink-0 border-r border-line/60 bg-ink-900/40 md:flex md:flex-col lg:w-[210px]">
           <div className="flex shrink-0 gap-1 border-b border-line/50 p-1.5">
             {(
               [
@@ -779,7 +796,7 @@ export function StudioShell({
       </div>
 
       {/* ------------------------------------------------- mobile : palettes */}
-      <div className="flex items-center gap-1.5 border-t border-line/60 bg-ink-900/80 px-2 py-1.5 lg:hidden">
+      <div className="flex items-center gap-1.5 border-t border-line/60 bg-ink-900/80 px-2 py-1.5 md:hidden">
         <button
           type="button"
           onClick={() => setMobilePanel((v) => (v === 'palette' ? 'none' : 'palette'))}
@@ -814,7 +831,7 @@ export function StudioShell({
       ) : null}
 
       {mobilePanel !== 'none' ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 h-[65vh] rounded-t-2xl border-t border-line/70 bg-ink-950/98 backdrop-blur-xl lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-40 h-[65vh] rounded-t-2xl border-t border-line/70 bg-ink-950/98 backdrop-blur-xl md:hidden">
           <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
             <span className="text-xs font-medium">
               {mobilePanel === 'palette' ? 'Valeurs & dipôles' : 'Résultats d’équivalence'}

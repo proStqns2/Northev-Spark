@@ -3,7 +3,9 @@ import { readSessionToken } from '@/lib/auth/session';
 import { resolveSession } from '@/lib/db/repo';
 import { aiSchema } from '@/lib/validation';
 import { CircuitDoc } from '@/lib/engine/types';
-import { runAgent } from '@/lib/ai/providers';
+import { runAgent, PersonalKeys } from '@/lib/ai/providers';
+import { userSealedKey } from '@/lib/db/repo';
+import { openSecret } from '@/lib/auth/vault';
 import { AGENTS } from '@/lib/ai/agents';
 
 export const runtime = 'nodejs';
@@ -18,6 +20,31 @@ export async function GET() {
       openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     },
   });
+}
+
+/**
+ * Déchiffre les clés du coffre de l'utilisateur.
+ * Une clé illisible (SECRET_KEY changé) est ignorée sans casser l'appel :
+ * on retombe alors sur les clés serveur puis sur le moteur local.
+ */
+async function personalKeysOf(userId: string): Promise<PersonalKeys> {
+  const [gemini, openai] = await Promise.all([
+    userSealedKey(userId, 'gemini'),
+    userSealedKey(userId, 'openai'),
+  ]);
+  const keys: PersonalKeys = {};
+  const g = openSecret(gemini);
+  if (g) keys.gemini = g;
+  const o = openSecret(openai);
+  if (o) {
+    keys.openai = o;
+    // une clé `sk-or-v1-…` déposée dans le champ OpenAI est une clé OpenRouter
+    if (o.startsWith('sk-or-')) {
+      keys.openrouter = o;
+      delete keys.openai;
+    }
+  }
+  return keys;
 }
 
 export async function POST(request: Request) {
@@ -42,12 +69,14 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
+  const personalKeys = await personalKeysOf(user.id);
   const reply = await runAgent({
     agent: parsed.data.agent,
     task: parsed.data.task,
     doc: parsed.data.doc as CircuitDoc | undefined,
     question: parsed.data.question,
     provider: parsed.data.provider,
+    personalKeys,
   });
   return NextResponse.json({ reply }, { headers: { 'Cache-Control': 'no-store' } });
 }

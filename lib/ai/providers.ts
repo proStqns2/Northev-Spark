@@ -7,11 +7,14 @@ import { AgentReply, runLocalAgent } from './local';
 
 export type Provider = 'openai' | 'gemini' | 'openrouter' | 'local';
 
-export function providerStatus() {
+/** clés apportées par l'utilisateur (coffre chiffré), prioritaires sur l'environnement */
+export type PersonalKeys = { openai?: string; gemini?: string; openrouter?: string };
+
+export function providerStatus(personal: PersonalKeys = {}) {
   return {
-    openai: Boolean(process.env.OPENAI_API_KEY),
-    gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
-    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+    openai: Boolean(personal.openai || process.env.OPENAI_API_KEY),
+    gemini: Boolean(personal.gemini || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
+    openrouter: Boolean(personal.openrouter || process.env.OPENROUTER_API_KEY),
     local: true,
   };
 }
@@ -58,13 +61,18 @@ function buildContext(agent: AgentId, task: string, doc: CircuitDoc, question?: 
   return lines.join('\n');
 }
 
-async function callOpenAI(system: string, user: string, signal: AbortSignal): Promise<string> {
+async function callOpenAI(
+  system: string,
+  user: string,
+  signal: AbortSignal,
+  personalKey?: string,
+): Promise<string> {
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${personalKey || process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
       model,
@@ -92,13 +100,18 @@ async function callOpenAI(system: string, user: string, signal: AbortSignal): Pr
  * Modèle par défaut : un modèle rapide et bon marché, surchargeable par
  * OPENROUTER_MODEL. Les en-têtes HTTP-Referer / X-Title identifient l'app.
  */
-async function callOpenRouter(system: string, user: string, signal: AbortSignal): Promise<string> {
+async function callOpenRouter(
+  system: string,
+  user: string,
+  signal: AbortSignal,
+  personalKey?: string,
+): Promise<string> {
   const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001';
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${personalKey || process.env.OPENROUTER_API_KEY}`,
       'HTTP-Referer': process.env.APP_URL || 'https://northev-spark.vercel.app',
       'X-Title': 'Northev Spark',
     },
@@ -125,9 +138,14 @@ async function callOpenRouter(system: string, user: string, signal: AbortSignal)
   return text;
 }
 
-async function callGemini(system: string, user: string, signal: AbortSignal): Promise<string> {
+async function callGemini(
+  system: string,
+  user: string,
+  signal: AbortSignal,
+  personalKey?: string,
+): Promise<string> {
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const key = personalKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
@@ -156,9 +174,12 @@ export async function runAgent(input: {
   doc?: CircuitDoc;
   question?: string;
   provider?: 'auto' | 'openai' | 'gemini' | 'openrouter' | 'local';
+  /** clés du coffre de l'utilisateur — jamais journalisées ni renvoyées */
+  personalKeys?: PersonalKeys;
 }): Promise<AgentReply> {
   const local = runLocalAgent(input.agent, input.task, input.doc, input.question);
-  const status = providerStatus();
+  const personal = input.personalKeys ?? {};
+  const status = providerStatus(personal);
   const requested = input.provider ?? 'auto';
 
   const useProvider: Provider =
@@ -194,10 +215,10 @@ export async function runAgent(input: {
   try {
     const text =
       useProvider === 'openai'
-        ? await callOpenAI(SYSTEM_PROMPT, context, controller.signal)
+        ? await callOpenAI(SYSTEM_PROMPT, context, controller.signal, personal.openai)
         : useProvider === 'openrouter'
-          ? await callOpenRouter(SYSTEM_PROMPT, context, controller.signal)
-          : await callGemini(SYSTEM_PROMPT, context, controller.signal);
+          ? await callOpenRouter(SYSTEM_PROMPT, context, controller.signal, personal.openrouter)
+          : await callGemini(SYSTEM_PROMPT, context, controller.signal, personal.gemini);
     return {
       ...local,
       provider: useProvider,

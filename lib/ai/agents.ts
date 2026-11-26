@@ -52,7 +52,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Extrait le modèle série de tout réseau.',
     description:
       'Théo résout le réseau par analyse nodale modifiée, calcule U_th et Z_th, puis vérifie le résultat par court-circuit. Chaque étape est expliquée comme une correction de copie.',
-    avatar: '/agents/tiles/thevenin-serie.png',
+    avatar: '/agents/tiles/thevenin-serie.webp',
     color: '#4f9dff',
     accentClass: 'from-spark-blue/25 to-spark-cyan/10',
     task: 'equivalence',
@@ -70,7 +70,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'La forme parallèle, sans approximation.',
     description:
       'Nora transforme le réseau en modèle de Norton, vérifie U_th = I_N · R_N et signale les cas limites (source idéale en parallèle, bornes court-circuitées).',
-    avatar: '/agents/tiles/norton-parallele.png',
+    avatar: '/agents/tiles/norton-parallele.webp',
     color: '#38e1e6',
     accentClass: 'from-spark-cyan/25 to-spark-green/10',
     task: 'equivalence',
@@ -88,7 +88,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Les deux modèles sont interchangeables.',
     description:
       'Agent de conversion : il vérifie E_th = R_N · I_N et R_th = R_N, puis produit les deux écritures du même dipôle. Il certifie que l’écart reste sous la tolérance numérique.',
-    avatar: '/agents/tiles/equivalence-tn.png',
+    avatar: '/agents/tiles/equivalence-tn.webp',
     color: '#a479ff',
     accentClass: 'from-spark-violet/25 to-spark-pink/10',
     task: 'conversion',
@@ -105,7 +105,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Z_th complexe, modules et phases.',
     description:
       'Impéda travaille en régime sinusoïdal : elle compose Z = R + jωL + 1/(jωC), mesure les déphasages et détecte la résonance (f₀, facteur de qualité).',
-    avatar: '/agents/tiles/thevenin-ac-serie-rl.png',
+    avatar: '/agents/tiles/thevenin-ac-serie-rl.webp',
     color: '#4f9dff',
     accentClass: 'from-spark-blue/25 to-spark-amber/10',
     task: 'equivalence',
@@ -123,7 +123,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Le régime sinusoïdal de bout en bout.',
     description:
       'Spécialiste AC parallèle : elle convertit un réseau RL/RC en modèle de Norton complexe, en conservant module et phase de chaque branche.',
-    avatar: '/agents/tiles/norton-ac-parallele-rl.png',
+    avatar: '/agents/tiles/norton-ac-parallele-rl.webp',
     color: '#46e6a0',
     accentClass: 'from-spark-green/25 to-spark-cyan/10',
     task: 'equivalence',
@@ -140,7 +140,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Le banc de mesure virtuel.',
     description:
       'Agent de laboratoire : il pose les deux mesures fondamentales (tension à vide, courant de court-circuit) et en déduit R_th = U_th / I_cc avec l’incertitude de mesure.',
-    avatar: '/agents/tiles/labo-calcul-tn.png',
+    avatar: '/agents/tiles/labo-calcul-tn.webp',
     color: '#ffc266',
     accentClass: 'from-spark-amber/25 to-spark-coral/10',
     task: 'verification',
@@ -157,7 +157,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Éteindre, simplifier, reconstruire.',
     description:
       'Agent de transformation : il applique les équivalences de sources (Thévenin ↔ Norton à l’intérieur du réseau), éteint les sources pour le calcul de R_th et simplifie les branches parallèles.',
-    avatar: '/agents/tiles/transformation-sources.png',
+    avatar: '/agents/tiles/transformation-sources.webp',
     color: '#ff7d6b',
     accentClass: 'from-spark-coral/25 to-spark-amber/10',
     task: 'reduction',
@@ -174,7 +174,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Le chef d’orchestre des agents.',
     description:
       'Le Hub coordonne les quatre axes du projet : mesure, Thévenin, Norton et conversion. Il agrège les réponses des autres agents et produit la synthèse signée.',
-    avatar: '/agents/tiles/hub-principal.png',
+    avatar: '/agents/tiles/hub-principal.webp',
     color: '#4f9dff',
     accentClass: 'from-spark-blue/25 to-spark-violet/10',
     task: 'equivalence',
@@ -191,7 +191,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Un réseau, un dipôle équivalent.',
     description:
       'Agent de modélisation : il remplace tout réseau linéaire vu de A–B par le dipôle unique qui le reproduit exactement, en vérifiant la courbe U(I).',
-    avatar: '/agents/tiles/dipoles-equivalents.png',
+    avatar: '/agents/tiles/dipoles-equivalents.webp',
     color: '#ffc266',
     accentClass: 'from-spark-amber/25 to-spark-cyan/10',
     task: 'pedagogie',
@@ -208,7 +208,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'Il refuse de valider une erreur.',
     description:
       'Volt contrôle la topologie, la cohérence des bornes et les cas limites. Il rédige le rapport de validation et refuse de certifier un montage mal branché.',
-    avatar: '/agents/tiles/transformation-sources.png',
+    avatar: '/agents/tiles/transformation-sources.webp',
     color: '#46e6a0',
     accentClass: 'from-spark-green/25 to-spark-cyan/10',
     task: 'verification',
@@ -225,7 +225,7 @@ export const AGENTS: AgentDefinition[] = [
     tagline: 'La méthode avant la réponse.',
     description:
       'Mentor enseigne la méthode : quelles lois appliquer, dans quel ordre, et pourquoi l’équivalent obtenu a du sens physiquement. Il génère aussi des quiz de vérification.',
-    avatar: '/agents/tiles/hub-principal.png',
+    avatar: '/agents/tiles/hub-principal.webp',
     color: '#a479ff',
     accentClass: 'from-spark-violet/25 to-spark-cyan/10',
     task: 'pedagogie',

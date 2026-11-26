@@ -4,6 +4,7 @@ import { readSessionToken } from '@/lib/auth/session';
 import { resolveSession, setUserKey, userKeyInfo } from '@/lib/db/repo';
 import { KEY_FORMAT, fingerprint, sealSecret, vaultAvailable } from '@/lib/auth/vault';
 import { geminiKey } from '@/lib/ai/gemini';
+import { providerStatus } from '@/lib/ai/providers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,11 +33,18 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
 
   const info = await userKeyInfo(user.id);
+  const server = providerStatus();
   return NextResponse.json(
     {
       vault: vaultAvailable(),
       serverGemini: Boolean(geminiKey()),
       keys: info,
+      /** ce que le serveur sait faire, sans révéler aucune clé */
+      providers: {
+        gemini: Boolean(info?.gemini) || server.gemini,
+        openrouter: Boolean(server.openrouter),
+        openai: Boolean(info?.openai) || server.openai,
+      },
     },
     { headers: { 'Cache-Control': 'no-store' } },
   );

@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export default async function ComptePage({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; onglet?: string }>;
 }) {
   const params = await searchParams;
   const token = await readSessionToken();
@@ -32,11 +32,16 @@ export default async function ComptePage({
   }
 
   const circuits = await listCircuits(user.id);
+  const TABS = ['historique', 'profil', 'apparence', 'securite', 'cles'] as const;
+  const initialTab = (TABS as readonly string[]).includes(params.onglet ?? '')
+    ? (params.onglet as (typeof TABS)[number])
+    : 'historique';
   return (
     <AccountClient
       mode="profile"
       user={user}
       cloud={cloudEnabled()}
+      initialTab={initialTab}
       circuits={circuits.map((c) => ({
         id: c.id,
         name: c.name,

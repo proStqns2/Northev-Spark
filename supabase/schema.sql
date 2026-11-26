@@ -19,9 +19,19 @@ create table if not exists public.profiles (
   avatar        text not null default 'circuit',
   theme         text not null default 'nuit',
   role          text not null default 'user' check (role in ('user', 'pro')),
+  -- empreinte scrypt du mot de passe : indispensable pour retrouver un compte
+  -- après un redéploiement (le système de fichiers serverless est éphémère).
+  password_hash text,
+  bio           text,
+  institution   text,
   created_at    timestamptz not null default now(),
   last_seen_at  timestamptz not null default now()
 );
+
+-- migration pour les bases créées avant l'ajout de ces colonnes
+alter table public.profiles add column if not exists password_hash text;
+alter table public.profiles add column if not exists bio text;
+alter table public.profiles add column if not exists institution text;
 
 -- ------------------------------------------------------------------ montages
 create table if not exists public.circuits (
