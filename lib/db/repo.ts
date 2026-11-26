@@ -65,7 +65,9 @@ export async function createUser(input: {
   await transaction((db) => {
     db.users.push(user);
   });
-  void backfillUser(user).catch(() => undefined);
+  // bloquant : si Supabase est configuré, le compte doit y être avant qu'on
+  // réponde, sinon un redéploiement immédiat le rendrait introuvable.
+  await backfillUser(user).catch(() => undefined);
   return { user };
 }
 

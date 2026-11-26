@@ -88,15 +88,21 @@ alter table public.circuits    enable row level security;
 alter table public.rooms       enable row level security;
 alter table public.room_events enable row level security;
 
--- Lecture publique des profils limitée aux colonnes non sensibles
+-- Aucune politique publique : les profils contiennent l'empreinte du mot de
+-- passe et les adresses e-mail. L'application n'y accède que par la clé
+-- service_role, côté serveur (route handlers Node), qui contourne la RLS.
+-- Ne créez jamais de politique `using (true)` ici : la clé anon est publique.
 drop policy if exists "profiles_public_read" on public.profiles;
-create policy "profiles_public_read" on public.profiles
-  for select using (true);
 
--- Le serveur utilise la clé service_role, qui contourne ces politiques.
--- Si vous exposez l'API Supabase directement au navigateur, ajoutez des
+-- Ceignez l'accès direct : même avec une clé anon, aucune ligne ne sort.
+revoke all on public.profiles from anon, authenticated;
+revoke all on public.circuits from anon, authenticated;
+revoke all on public.rooms from anon, authenticated;
+revoke all on public.room_events from anon, authenticated;
+
+-- Si vous exposiez un jour l'API Supabase au navigateur, ajoutez des
 -- politiques basées sur auth.uid() après avoir mappé vos comptes sur
--- Supabase Auth, ou passez exclusivement par les routes /api de cette app.
+-- Supabase Auth — ou restez sur les routes /api de cette application.
 
 -- ------------------------------------------------------------------ trigger
 create or replace function public.touch_updated_at()

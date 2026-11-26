@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ['@supabase/supabase-js'],
+  // aperçus de développement servis sous un domaine différent du sandbox
+  allowedDevOrigins: ['*.e2b.app', '*.e2b.dev', 'localhost', '127.0.0.1'],
   eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [
