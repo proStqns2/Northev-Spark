@@ -2,6 +2,34 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SessionRecord, StoredCircuit, StoredRoom, StoredUser } from './store';
 
 /**
+ * Journalisation anti-bruit : une panne réseau Supabase produit sinon des
+ * dizaines de lignes par minute. On n'affiche chaque message qu'une fois par
+ * minute, et on signale le retour à la normale.
+ */
+const lastWarned = new Map<string, number>();
+let outageNotified = false;
+
+function warnOnce(scope: string, message: string): void {
+  const now = Date.now();
+  const last = lastWarned.get(scope) ?? 0;
+  if (now - last < 60_000) return;
+  lastWarned.set(scope, now);
+  if (!outageNotified) {
+    outageNotified = true;
+    console.warn(`[supabase] écrire/lire impossible (${message}) — le site continue en local.`);
+    return;
+  }
+  console.warn(`[supabase] ${scope}: ${message}`);
+}
+
+function noteOnline(): void {
+  if (!outageNotified) return;
+  outageNotified = false;
+  console.log('[supabase] connexion rétablie.');
+}
+
+
+/**
  * Couche Supabase optionnelle.
  * Sans variables d'environnement, l'application fonctionne en mode démo local.
  * Avec SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY, l'historique des comptes et
@@ -85,7 +113,7 @@ export async function backfillUser(user: StoredUser): Promise<void> {
     { onConflict: 'id' },
   );
   if (error && !isMissingTable(error)) {
-    console.warn('[supabase] profiles upsert:', error.message);
+    warnOnce('profiles upsert', error.message);
   }
 }
 
@@ -143,7 +171,7 @@ export async function pullUserByEmail(email: string): Promise<StoredUser | null>
   if (!result) return null; // délai dépassé : on continue en local
   const { data, error } = result;
   if (error) {
-    if (!isMissingTable(error)) console.warn('[supabase] profiles select:', error.message);
+    if (!isMissingTable(error)) warnOnce('profiles select', error.message);
     return null;
   }
   if (!data) return null;
@@ -187,7 +215,7 @@ export async function pushCircuit(circuit: StoredCircuit): Promise<void> {
     { onConflict: 'id' },
   );
   if (error && !isMissingTable(error)) {
-    console.warn('[supabase] circuits upsert:', error.message);
+    warnOnce('circuits upsert', error.message);
   }
 }
 
@@ -222,7 +250,7 @@ export async function pullCircuits(ownerId: string): Promise<StoredCircuit[]> {
   if (!result) return [];
   const { data, error } = result;
   if (error) {
-    if (!isMissingTable(error)) console.warn('[supabase] circuits select:', error.message);
+    if (!isMissingTable(error)) warnOnce('circuits select', error.message);
     return [];
   }
   return (data as CircuitRow[]).map((row) => ({
@@ -245,7 +273,7 @@ export async function deleteRemoteCircuit(id: string, ownerId: string): Promise<
   const sb = supabaseAdmin();
   if (!sb) return;
   const { error } = await sb.from('circuits').delete().eq('id', id).eq('owner_id', ownerId);
-  if (error && !isMissingTable(error)) console.warn('[supabase] circuits delete:', error.message);
+  if (error && !isMissingTable(error)) warnOnce('circuits delete', error.message);
 }
 
 export async function publishRoomEvent(payload: {
@@ -263,7 +291,7 @@ export async function publishRoomEvent(payload: {
     data: payload.data,
   });
   if (error && !isMissingTable(error)) {
-    console.warn('[supabase] room_events insert:', error.message);
+    warnOnce('room_events insert', error.message);
   }
 }
 
@@ -288,7 +316,7 @@ export async function pushSession(record: SessionRecord): Promise<void> {
     },
     { onConflict: 'token' },
   );
-  if (error && !isMissingTable(error)) console.warn('[supabase] sessions upsert:', error.message);
+  if (error && !isMissingTable(error)) warnOnce('sessions upsert', error.message);
 }
 
 export async function pullSession(token: string): Promise<SessionRecord | null> {
@@ -317,7 +345,7 @@ export async function deleteRemoteSession(token: string): Promise<void> {
   const sb = supabaseAdmin();
   if (!sb) return;
   const { error } = await sb.from('sessions').delete().eq('token', token);
-  if (error && !isMissingTable(error)) console.warn('[supabase] sessions delete:', error.message);
+  if (error && !isMissingTable(error)) warnOnce('sessions delete', error.message);
 }
 
 /** Purge des sessions expirées (appelée à la connexion, sans bloquer). */
@@ -325,7 +353,7 @@ export async function pruneRemoteSessions(): Promise<void> {
   const sb = supabaseAdmin();
   if (!sb) return;
   const { error } = await sb.from('sessions').delete().lt('expires_at', new Date().toISOString());
-  if (error && !isMissingTable(error)) console.warn('[supabase] sessions prune:', error.message);
+  if (error && !isMissingTable(error)) warnOnce('sessions prune', error.message);
 }
 
 /* --------------------------------------------------------------------- salles */
@@ -352,7 +380,7 @@ export async function pushRoom(room: StoredRoom): Promise<void> {
     },
     { onConflict: 'code' },
   );
-  if (error && !isMissingTable(error)) console.warn('[supabase] rooms upsert:', error.message);
+  if (error && !isMissingTable(error)) warnOnce('rooms upsert', error.message);
 }
 
 /** Relit une salle ouverte (utile quand une autre instance l'a créée). */
