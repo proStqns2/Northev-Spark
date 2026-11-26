@@ -1,0 +1,224 @@
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* thème nocturne (par défaut) */
+  --ink-950: 6 11 20;
+  --ink-900: 9 16 28;
+  --ink-850: 12 21 35;
+  --ink-800: 16 27 44;
+  --ink-700: 23 38 60;
+  --line: 40 61 90;
+  --fg: 233 240 252;
+  --fg-soft: 176 195 219;
+  --fg-mute: 124 148 178;
+  --accent: 56 225 230;
+  --accent-2: 79 157 255;
+  --grid-color: 120 170 255;
+  color-scheme: dark;
+}
+
+[data-theme='aurore'] {
+  --ink-950: 8 8 20;
+  --ink-900: 12 11 30;
+  --ink-850: 16 14 40;
+  --ink-800: 22 18 52;
+  --ink-700: 32 25 70;
+  --line: 54 42 94;
+  --fg: 240 236 255;
+  --fg-soft: 200 189 235;
+  --fg-mute: 150 136 190;
+  --accent: 164 121 255;
+  --accent-2: 255 121 198;
+  --grid-color: 170 130 255;
+  color-scheme: dark;
+}
+
+[data-theme='carbone'] {
+  --ink-950: 4 5 7;
+  --ink-900: 8 10 13;
+  --ink-850: 12 15 19;
+  --ink-800: 18 22 28;
+  --ink-700: 28 34 42;
+  --line: 44 53 66;
+  --fg: 238 242 247;
+  --fg-soft: 168 180 195;
+  --fg-mute: 120 132 148;
+  --accent: 70 230 160;
+  --accent-2: 56 225 230;
+  --grid-color: 110 130 150;
+  color-scheme: dark;
+}
+
+[data-theme='labo'] {
+  --ink-950: 244 247 251;
+  --ink-900: 255 255 255;
+  --ink-850: 250 252 255;
+  --ink-800: 240 245 250;
+  --ink-700: 226 234 244;
+  --line: 200 214 230;
+  --fg: 15 27 44;
+  --fg-soft: 60 82 110;
+  --fg-mute: 108 130 158;
+  --accent: 14 148 158;
+  --accent-2: 37 99 235;
+  --grid-color: 30 80 140;
+  color-scheme: light;
+}
+
+* {
+  border-color: rgb(var(--line) / 0.9);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-fg antialiased font-display;
+  background-image:
+    radial-gradient(70% 45% at 50% -10%, rgb(var(--accent) / 0.09), transparent 65%),
+    radial-gradient(40% 30% at 100% 0%, rgb(var(--accent-2) / 0.07), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.3);
+}
+
+/* ---------- scrollbars ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line) / 0.9);
+  border-radius: 999px;
+  border: 2px solid rgb(var(--ink-950));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--accent) / 0.45);
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-line/70 bg-ink-900/80 shadow-panel backdrop-blur;
+  }
+  .panel-soft {
+    @apply rounded-xl border border-line/50 bg-ink-850/60;
+  }
+  .card-hover {
+    @apply transition duration-300 hover:-translate-y-1 hover:border-spark-cyan/40 hover:shadow-glow;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line/70 bg-ink-800/80 px-2.5 py-1 font-mono text-[11px] text-fg-soft;
+  }
+  .kbd {
+    @apply rounded-md border border-line/80 bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-fg-soft;
+  }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl border border-line/70 bg-ink-800/80 px-4 py-2.5 text-sm font-medium text-fg transition duration-200 hover:border-spark-cyan/50 hover:bg-ink-700/80 active:scale-[.985] disabled:cursor-not-allowed disabled:opacity-45;
+  }
+  .btn-primary {
+    @apply border-transparent bg-gradient-to-b from-spark-cyan to-[#17b9c4] font-semibold text-[#03131a] shadow-glow-sm hover:from-[#63ecef] hover:to-[#1ecdd8] hover:border-transparent;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-ink-800/70;
+  }
+  .btn-sm {
+    @apply rounded-lg px-3 py-1.5 text-xs;
+  }
+  .field {
+    @apply w-full rounded-lg border border-line/70 bg-ink-950/70 px-3 py-2 font-mono text-sm text-fg outline-none transition placeholder:text-fg-mute/70 focus:border-spark-cyan/60 focus:ring-2 focus:ring-spark-cyan/15;
+  }
+  .label-xs {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-mute;
+  }
+  .hairline {
+    @apply border-t border-line/60;
+  }
+  .glow-text {
+    text-shadow: 0 0 18px rgb(var(--accent) / 0.45);
+  }
+  .noise {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  }
+}
+
+/* ---------- grille du canvas ---------- */
+.canvas-grid {
+  background-image:
+    linear-gradient(rgb(var(--grid-color) / 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--grid-color) / 0.075) 1px, transparent 1px),
+    linear-gradient(rgb(var(--grid-color) / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--grid-color) / 0.035) 1px, transparent 1px);
+  background-size:
+    96px 96px,
+    96px 96px,
+    24px 24px,
+    24px 24px;
+}
+
+/* ---------- animation des électrons ---------- */
+.electron {
+  offset-rotate: 0deg;
+  animation-name: travel;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+@keyframes travel {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .electron {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--line));
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  box-shadow: 0 0 12px rgb(var(--accent) / 0.6);
+  cursor: pointer;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
