@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 export default async function StudioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ circuit?: string; template?: string; agent?: string }>;
+  searchParams: Promise<{ circuit?: string; template?: string; agent?: string; project?: string }>;
 }) {
   const params = await searchParams;
   const token = await readSessionToken();
@@ -34,6 +34,10 @@ export default async function StudioPage({
     }
   }
   const projects = user ? await listProjects(user.id) : [];
+  // montage rattaché à un projet dès l'ouverture (`/studio?template=…&project=prj_…`)
+  if (!projectId && params.project && projects.some((p) => p.id === params.project)) {
+    projectId = params.project;
+  }
   if (!doc && params.template) {
     doc = templateDoc(params.template);
   }
