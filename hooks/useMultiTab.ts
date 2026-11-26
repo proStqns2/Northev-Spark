@@ -81,6 +81,9 @@ export function useMultiTabSync(options: {
       switch (msg.kind) {
         case 'doc': {
           applyingRemote.current = true;
+          // on mémorise l'empreinte reçue : l'effet de diffusion ne la
+          // renverra pas (aucun écho entre onglets)
+          lastBroadcast.current = JSON.stringify(msg.doc);
           onRemoteDocRef.current?.(msg.doc);
           // on laisse le temps à l'effet de diffusion de voir le drapeau
           setTimeout(() => {
