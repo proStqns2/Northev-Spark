@@ -108,7 +108,12 @@ const recip = (z: Complex): Complex => {
   return cx(z.re / d, -z.im / d);
 };
 
-function idealShort(c: Component, ac: boolean, sourcesOn: boolean): boolean {
+function idealShort(
+  c: Component,
+  ac: boolean,
+  sourcesOn: boolean,
+  onlySourceId?: string,
+): boolean {
   switch (c.kind) {
     case 'wire':
       return true;
@@ -117,7 +122,9 @@ function idealShort(c: Component, ac: boolean, sourcesOn: boolean): boolean {
     case 'inductor':
       return !ac;
     case 'vsource':
-      return !sourcesOn;
+      // Une source de tension éteinte est un court-circuit. En superposition
+      // (onlySourceId), toutes les sources sauf la sélectionnée sont éteintes.
+      return !sourcesOn || (onlySourceId !== undefined && onlySourceId !== c.id);
     default:
       return false;
   }
@@ -153,7 +160,7 @@ export function buildNetlist(
   }
 
   for (const c of doc.components) {
-    if (idealShort(c, ac, options.sourcesOn)) uf.union(c.a, c.b);
+    if (idealShort(c, ac, options.sourcesOn, options.onlySourceId)) uf.union(c.a, c.b);
   }
 
   const canon = new Map<string, string>();

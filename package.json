@@ -10,7 +10,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "api": "tsx server/api/index.ts",
-    "api:watch": "tsx watch server/api/index.ts"
+    "api:watch": "tsx watch server/api/index.ts",
+    "test": "tsx --test lib/engine/solver.test.ts",
+    "verify": "tsx scripts/verify-engine.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
