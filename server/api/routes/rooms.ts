@@ -1,0 +1,415 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import {
+  createCircuit,
+  createRoom,
+  ensurePresence,
+  findRoom,
+  joinRoom,
+  leaveRoom,
+  listRoomsFor,
+  livePresence,
+  touchRoom,
+  updateCursor,
+} from '@/lib/db/repo';
+import { publishRoomEvent } from '@/lib/db/supabase';
+import { circuitDocSchema, roomCreateSchema, roomJoinSchema, roomPatchSchema } from '@/lib/validation';
+import type { CircuitDoc } from '@/lib/engine/types';
+import type { CursorState, PresenceRecord } from '@/lib/db/store';
+import { cachedEquivalent } from '@/lib/cache';
+import { bodyOf, currentUser, fail, NO_STORE } from '../helpers';
+
+const CURSOR_TTL = 12000;
+const TICK_MS = 110; // ~9 rafraîchissements par seconde
+
+const cursorBodySchema = z.object({
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
+  vx: z.number().finite().optional(),
+  vy: z.number().finite().optional(),
+  vw: z.number().finite().optional(),
+  vh: z.number().finite().optional(),
+  hover: z.string().max(64).nullable().optional(),
+  tool: z.string().max(24).optional(),
+  at: z.number().finite().optional(),
+  activity: z.string().max(80).optional(),
+  idle: z.boolean().optional(),
+});
+
+export async function registerRoomRoutes(app: FastifyInstance) {
+  // ---- liste des ateliers de l'utilisateur
+  app.get('/api/rooms', async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const rooms = await listRoomsFor(user.id);
+    reply.header('Cache-Control', 'no-store');
+    return reply.send({
+      rooms: rooms.map((r) => ({
+        code: r.code,
+        name: r.name,
+        circuitId: r.circuitId,
+        ownerId: r.ownerId,
+        ownerName: r.ownerName,
+        projectId: r.projectId,
+        participants: Object.values(r.presence),
+        revision: r.revision,
+        updatedAt: r.updatedAt,
+      })),
+    });
+  });
+
+  // ---- création d'un atelier (à partir d'un montage ou d'un document)
+  app.post('/api/rooms', async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = roomCreateSchema.safeParse(bodyOf(request));
+    if (!parsed.success) {
+      return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Montage invalide.');
+    }
+    const doc = circuitDocSchema.parse(parsed.data.doc) as CircuitDoc;
+    const eq = cachedEquivalent(doc);
+
+    let circuitId = parsed.data.circuitId;
+    if (!circuitId) {
+      const circuit = await createCircuit({
+        ownerId: user.id,
+        name: doc.name,
+        notes: doc.notes ?? '',
+        doc,
+        lastResult: eq.ok
+          ? {
+              vth: Math.hypot(eq.vth.re, eq.vth.im),
+              rth: Math.hypot(eq.rth.re, eq.rth.im),
+              inorton: Math.hypot(eq.inorton.re, eq.inorton.im),
+              regime: doc.regime,
+            }
+          : undefined,
+      });
+      circuitId = circuit.id;
+    }
+
+    const room = await createRoom({
+      owner: user,
+      name: parsed.data.name,
+      circuitId,
+      doc,
+      projectId: parsed.data.projectId,
+    });
+    return reply.code(201).send({
+      code: room.code,
+      name: room.name,
+      circuitId: room.circuitId,
+      projectId: room.projectId,
+      revision: room.revision,
+      createdAt: room.createdAt,
+    });
+  });
+
+  // ---- rejoindre un atelier par son code
+  app.post('/api/rooms/join', async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = roomJoinSchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Code invalide.');
+    const result = await joinRoom(parsed.data.code, user);
+    if ('error' in result) return fail(reply, 404, result.error, { code: result.code });
+    return reply.send({
+      code: result.room.code,
+      name: result.room.name,
+      circuitId: result.room.circuitId,
+      ownerName: result.room.ownerName,
+      participants: Object.entries(result.room.presence).map(([id, p]) => ({ id, ...p })),
+      revision: result.room.revision,
+      updatedAt: result.room.updatedAt,
+    });
+  });
+
+  // ---- détail / sondage (rev) / mise à jour / départ
+  app.get('/api/rooms/:code', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const query = (request.query ?? {}) as Record<string, string>;
+    const since = Number(query.rev ?? '0');
+    const isPoll = 'rev' in query;
+
+    const user = await currentUser(request);
+    const room = await findRoom(code);
+    if (!room) {
+      return fail(reply, 404, 'Atelier introuvable ou fermé.', { code: 'room_not_found' });
+    }
+    const presence = livePresence(room);
+
+    if (isPoll) {
+      if (user) {
+        const previous = room.presence[user.id];
+        room.presence[user.id] = {
+          id: user.id,
+          name: user.name,
+          avatar: user.avatar,
+          color: previous?.color ?? '#38e1e6',
+          at: new Date().toISOString(),
+          cursor: previous?.cursor,
+          idle: previous?.idle,
+          activity: previous?.activity,
+          seenAt: Date.now(),
+        };
+        await touchRoom(code, { presence: room.presence });
+      }
+      reply.header('Cache-Control', NO_STORE['Cache-Control']);
+      return reply.send({
+        code: room.code,
+        name: room.name,
+        revision: room.revision,
+        changed: room.revision > since,
+        doc: room.revision > since ? room.doc : undefined,
+        participants: presence,
+        messages: room.messages.slice(-40),
+        ownerId: room.ownerId,
+        ownerName: room.ownerName,
+        circuitId: room.circuitId,
+        projectId: room.projectId,
+      });
+    }
+
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({
+      code: room.code,
+      name: room.name,
+      revision: room.revision,
+      doc: room.doc,
+      participants: presence,
+      messages: room.messages.slice(-40),
+      ownerId: room.ownerId,
+      ownerName: room.ownerName,
+      circuitId: room.circuitId,
+    });
+  });
+
+  app.patch('/api/rooms/:code', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const room = await findRoom(code);
+    if (!room) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    const parsed = roomPatchSchema.safeParse(bodyOf(request));
+    if (!parsed.success) {
+      return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Données invalides.');
+    }
+
+    const messages = [...room.messages];
+    if (parsed.data.message) {
+      messages.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        authorId: user.id,
+        authorName: user.name,
+        text: parsed.data.message,
+        at: new Date().toISOString(),
+      });
+    }
+
+    const doc = parsed.data.doc as CircuitDoc | undefined;
+    const updated = await touchRoom(code, {
+      doc: doc ?? room.doc,
+      name: parsed.data.name ?? room.name,
+      messages: messages.slice(-80),
+      revision: room.revision + 1,
+      presence: {
+        ...room.presence,
+        [user.id]: {
+          ...room.presence[user.id],
+          id: user.id,
+          name: user.name,
+          avatar: user.avatar,
+          color: room.presence[user.id]?.color ?? '#38e1e6',
+          at: new Date().toISOString(),
+          seenAt: Date.now(),
+        },
+      },
+    });
+
+    void publishRoomEvent({
+      code,
+      kind: doc ? 'doc' : 'chat',
+      userId: user.id,
+      data: { revision: updated?.revision },
+    }).catch(() => undefined);
+
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ revision: updated?.revision ?? room.revision + 1, savedAt: updated?.updatedAt });
+  });
+
+  app.delete('/api/rooms/:code', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    await leaveRoom(code, user.id);
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ ok: true });
+  });
+
+  // ---- curseur (appelé à ~10 Hz par le studio)
+  app.post('/api/rooms/:code/cursor', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = cursorBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Curseur invalide.');
+    const data = parsed.data;
+
+    const hidden =
+      data.idle === true ||
+      data.x === undefined ||
+      data.y === undefined ||
+      (data.x === 0 && data.y === 0);
+    const cursor: CursorState | null = hidden
+      ? null
+      : {
+          x: data.x as number,
+          y: data.y as number,
+          vx: data.vx,
+          vy: data.vy,
+          vw: data.vw,
+          vh: data.vh,
+          hover: data.hover ?? null,
+          tool: data.tool,
+          at: Date.now(),
+        };
+
+    const presenceRev = await updateCursor(code, user, cursor, data.activity);
+    if (presenceRev === null) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    reply.header('Cache-Control', 'no-store');
+    return reply.send({ ok: true, rev: presenceRev });
+  });
+
+  // ---- flux Server-Sent Events de l'atelier
+  app.get('/api/rooms/:code/events', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié');
+    const room = await findRoom(code);
+    if (!room) return fail(reply, 404, 'Atelier introuvable');
+
+    await ensurePresence(code, user);
+
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    let closed = false;
+    let revision = 0;
+    let lastPresenceSignature = '';
+    let lastCursorSignature = '';
+    let lastMessageId = room.messages.at(-1)?.id ?? '';
+
+    const send = (event: string, data: unknown) => {
+      if (closed) return;
+      try {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      } catch {
+        closed = true;
+      }
+    };
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(interval);
+      clearInterval(heartbeat);
+      try {
+        res.end();
+      } catch {
+        /* déjà fermé */
+      }
+    };
+
+    const tick = async () => {
+      if (closed) return;
+      try {
+        const current = await findRoom(code);
+        if (!current) {
+          send('room-closed', { code });
+          cleanup();
+          return;
+        }
+
+        const participants = livePresence(current);
+        const presenceSignature = participants
+          .map((p) => `${p.id}:${p.name}:${p.color}:${p.activity ?? ''}:${p.idle ? 1 : 0}`)
+          .sort()
+          .join('|');
+        if (presenceSignature !== lastPresenceSignature) {
+          lastPresenceSignature = presenceSignature;
+          send('presence', { participants });
+        }
+
+        const now = Date.now();
+        const cursors = participants
+          .filter((p) => p.id !== user.id && p.cursor)
+          .map((p) => {
+            const cursor = p.cursor!;
+            const age = now - (cursor.at ?? now);
+            return {
+              id: p.id,
+              name: p.name,
+              color: p.color,
+              avatar: p.avatar,
+              x: cursor.x,
+              y: cursor.y,
+              hover: cursor.hover ?? null,
+              tool: cursor.tool ?? null,
+              idle: age > CURSOR_TTL || p.idle,
+              fresh: age < 2500,
+            };
+          });
+        const cursorSignature = cursors
+          .map((c) => `${c.id}:${c.x.toFixed(1)}:${c.y.toFixed(1)}:${c.idle ? 1 : 0}:${c.tool ?? ''}`)
+          .join('|');
+        if (cursorSignature !== lastCursorSignature) {
+          lastCursorSignature = cursorSignature;
+          send('cursors', { cursors });
+        }
+
+        if (current.revision !== revision) {
+          revision = current.revision;
+          send('revision', {
+            revision: current.revision,
+            updatedAt: current.updatedAt,
+            author: current.messages.at(-1)?.authorName,
+          });
+        }
+
+        const lastMessage = current.messages.at(-1);
+        if (lastMessage && lastMessage.id !== lastMessageId) {
+          lastMessageId = lastMessage.id;
+          send('chat', { message: lastMessage, messages: current.messages.slice(-40) });
+        }
+      } catch {
+        /* on retentera au prochain battement */
+      }
+    };
+
+    const interval = setInterval(tick, TICK_MS);
+    const heartbeat = setInterval(() => {
+      if (closed) return;
+      try {
+        res.write(': keep-alive\n\n');
+      } catch {
+        closed = true;
+      }
+    }, 15000);
+
+    request.raw.on('close', cleanup);
+    res.on('error', cleanup);
+
+    send('ready', {
+      code,
+      user: { id: user.id, name: user.name },
+      presence: livePresence(room) as PresenceRecord[],
+    });
+    void tick();
+  });
+}

@@ -12,7 +12,7 @@ import {
 } from './store';
 import { hashPassword, inviteCode, sha256, verifyPassword } from '@/lib/auth/crypto';
 import { sessionTtlMs } from '@/lib/auth/config';
-import { SessionUser } from '@/lib/auth/session';
+import type { SessionUser } from '@/lib/auth/session';
 import { backfillUser, cloudEnabled, pullCircuits, pullUserByEmail, pushCircuit } from './supabase';
 
 const AVATARS = ['circuit', 'bolt', 'oscillo', 'resistor', 'magnet', 'chip', 'photon', 'wave'];

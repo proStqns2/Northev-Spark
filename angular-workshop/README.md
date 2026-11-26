@@ -1,20 +1,20 @@
 # Atelier Angular — Northev Spark
 
 Client **Angular 20** (signals, zoneless) de l'atelier collaboratif. Il parle au
-serveur temps réel Node (`../server/realtime.mjs`) par **WebSocket** : curseurs
+backend Node unifié (`../server/api/`, Fastify) par **WebSocket** : curseurs
 interpolés, présence, chat et révisions du montage.
 
 ```
-Angular (4300)  ──/rt──►  serveur Node (4100)  ──ws──►  autres clients
-   signals                 zéro dépendance                Next.js ou Angular
+Angular (4300)  ──/rt──►  backend Node (4100)  ──ws──►  autres clients
+   signals                 Fastify + SSE + WS             Next.js ou Angular
 ```
 
 ## Lancer
 
-Le serveur temps réel doit tourner (une seule commande, à la racine du dépôt) :
+Le backend doit tourner (une seule commande, à la racine du dépôt) :
 
 ```bash
-node server/realtime.mjs          # http://localhost:4100
+npm run api                       # http://localhost:4100
 ```
 
 Puis l'atelier Angular :

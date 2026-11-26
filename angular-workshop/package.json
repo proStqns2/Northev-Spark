@@ -6,7 +6,7 @@
   "scripts": {
     "start": "ng serve --port 4300 --host 0.0.0.0",
     "build": "ng build",
-    "proxy": "node --watch ../server/realtime.mjs"
+    "proxy": "npm --prefix .. run api"
   },
   "dependencies": {
     "@angular/common": "^20.0.0",

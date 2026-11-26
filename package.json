@@ -8,12 +8,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "api": "tsx server/api/index.ts",
+    "api:watch": "tsx watch server/api/index.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "@fastify/websocket": "^11.3.7",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@supabase/supabase-js": "^2.119.2",
+    "dotenv": "^18.0.10",
+    "fastify": "^5.12.8",
     "lucide-react": "^0.468.0",
     "next": "15.5.29",
     "perfect-cursors": "^1.0.5",
@@ -25,6 +31,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.2",
+    "@types/ws": "^8.18.2",
     "autoprefixer": "^10.4.20",
     "playwright": "^1.49.1",
     "postcss": "^8.4.49",

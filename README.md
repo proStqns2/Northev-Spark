@@ -149,22 +149,36 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 
 | Couche | Rôle | Dossier | Port |
 |---|---|---|---|
-| **Next.js 15** | site, studio, moteur de calcul, projets, API REST | `app/`, `lib/`, `components/` | 3000 |
-| **Node.js** | serveur temps réel autonome (WebSocket natif, zéro dépendance) | `server/` | 4100 |
+| **Next.js 15** | site et studio (frontend uniquement, relaie `/api/*`) | `app/`, `components/` | 3000 |
+| **Node.js + Fastify** | backend unifié : API REST, solveur, IA, comptes, SSE, WebSocket | `server/api/`, `lib/` | 4100 |
 | **Angular 20** | atelier collaboratif (signals, zoneless) | `angular-workshop/` | 4300 |
 
-Le serveur Node est indépendant : il ne calcule rien, il synchronise (curseurs,
-présence, chat, révisions). Next.js et Angular sont deux clients du même protocole.
+Le backend Node possède toute la logique métier (il réutilise `lib/` : moteur
+MNA, agents IA, chiffrement, persistance Supabase). Next.js n'est qu'un
+frontend : ses appels `/api/*` sont relayés vers le backend par un `rewrite`
+(voir `next.config.mjs`). Angular se connecte au même backend par son proxy
+(`/rt` → WebSocket + REST invité).
 
 ```bash
-node server/realtime.mjs         # temps réel (ws://localhost:4100)
-npm run dev                      # Next.js  → http://localhost:3000
+npm run api                      # backend Node → http://localhost:4100
+npm run dev                      # Next.js      → http://localhost:3000
 cd angular-workshop && npm i && npm start   # Angular → http://localhost:4300
 ```
 
-Le serveur Node expose aussi une API de secours sans WebSocket :
-`GET /health`, `GET|POST /api/rooms`, `GET|PATCH|DELETE /api/rooms/:code`,
-`POST /api/rooms/:code/presence`, `POST /api/rooms/:code/chat`.
+Le backend expose :
+
+- **REST** : `/api/auth/*`, `/api/circuits`, `/api/solve`, `/api/ai/*`,
+  `/api/templates`, `/api/profile/*`, `/api/projects/*`, `/api/rooms/*`,
+  `/api/import`, `/api/health` ;
+- **SSE** : `/api/rooms/:code/events` (salles de compte : présence, curseurs,
+  révisions, chat) ;
+- **WebSocket** : `/rt/ws/:code` (salles invitées de l'atelier Angular), avec
+  repli REST sous `/rt/api/rooms*`.
+
+En production, déployez le backend sur un hébergeur Node (Render, Railway,
+Fly.io…) et pointez `API_URL` dessus pour le frontend Next.js ; les variables
+(`SECRET_KEY`, `SUPABASE_*`, clés IA) vivent dans `.env.local`, chargées par
+le backend au démarrage.
 
 ### Symboles normalisés
 
