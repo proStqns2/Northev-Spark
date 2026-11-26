@@ -42,7 +42,7 @@ export const cloudEnabled = (): boolean => supabaseAdmin() !== null;
  * injoignable, l'inscription/connexion ne doit pas attendre des secondes.
  * Au-delà du délai, on continue en mode local (le compte reste valide).
  */
-async function withTimeout<T>(promise: PromiseLike<T>, ms = 1500): Promise<T | null> {
+async function withTimeout<T>(promise: PromiseLike<T>, ms = 1000): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
