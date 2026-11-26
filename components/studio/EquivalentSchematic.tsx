@@ -1,9 +1,10 @@
 'use client';
 
-import { ArrowLeftRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowLeftRight, Zap } from 'lucide-react';
 import { EquivalentResult } from '@/lib/engine/equivalent';
 import { formatPhasor, formatSI } from '@/lib/engine/format';
-import { abs } from '@/lib/engine/complex';
+import { abs, add, cx, div, mul } from '@/lib/engine/complex';
 import { NormSymbol, NormSymbolDefs } from './symbols/NormSymbol';
 
 /**
@@ -95,6 +96,23 @@ export function EquivalentSchematic({
   equivalent: EquivalentResult;
   regime: 'dc' | 'ac';
 }) {
+  // Charge R_L branchée entre A et B (simulateur de transfert de puissance).
+  // Curseur logarithmique : R_L de 0,1 Ω à 1 MΩ.
+  const [rlLog, setRlLog] = useState(2.7); // ≈ 500 Ω par défaut
+  const rl = useMemo(() => Math.pow(10, rlLog), [rlLog]);
+
+  const load = useMemo(() => {
+    if (!equivalent.ok) return null;
+    const zth = equivalent.rth;
+    const denom = add(zth, cx(rl, 0));
+    const iL = div(equivalent.vth, denom);
+    const uL = mul(iL, cx(rl, 0));
+    const pL = abs(iL) * abs(iL) * rl;
+    const zAbs = abs(zth);
+    const pMax = (abs(equivalent.vth) * abs(equivalent.vth)) / (4 * Math.max(zAbs, 1e-12));
+    return { uL, iL, pL, pMax, zAbs, atMax: Math.abs(rl - zAbs) / Math.max(zAbs, 1e-9) < 0.05 };
+  }, [equivalent, rl]);
+
   if (!equivalent.ok) {
     return (
       <div className="flex h-[150px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-line/70 bg-ink-850/40 text-center">
@@ -132,20 +150,24 @@ export function EquivalentSchematic({
         <figure className="rounded-lg border border-spark-cyan/25 bg-ink-950/40 p-1">
           <svg viewBox="0 0 132 128" className="h-[112px] w-full">
             <NormSymbolDefs />
+            {/* rails A (haut) et B (bas) */}
+            <line x1={30} y1={16} x2={104} y2={16} stroke={CYAN} strokeWidth={1.8} />
+            <line x1={30} y1={112} x2={104} y2={112} stroke={CYAN} strokeWidth={1.8} />
             {/* branche de gauche : source E_th + Z_th en série */}
             <VerticalDipole x={30} yTop={16} yBottom={44} kind="vsource" color={CYAN} />
             <VerticalDipole x={30} yTop={44} yBottom={72} kind="resistor" color={VIOLET} bare />
+            <line x1={30} y1={72} x2={30} y2={112} stroke={CYAN} strokeWidth={1.8} />
+            {/* branche de droite : charge R_L */}
+            <VerticalDipole x={104} yTop={16} yBottom={112} kind="resistor" color={AMBER} />
             {/* bornes */}
             <Terminal x={30} y={16} label="A" color={CYAN} />
             <Terminal x={30} y={112} label="B" color={CYAN} />
-            <line x1={30} y1={72} x2={30} y2={112} stroke={CYAN} strokeWidth={1.8} />
-            <ValueTag x={78} y={46} label="E_th" value={vth} color={CYAN} />
-            <ValueTag x={78} y={90} label="Z_th" value={zthLabel} color={VIOLET} />
-            <line x1={48} y1={40} x2={62} y2={40} stroke={CYAN} strokeWidth={1} strokeDasharray="2 2" opacity={0.55} />
-            <line x1={48} y1={86} x2={62} y2={86} stroke={VIOLET} strokeWidth={1} strokeDasharray="2 2" opacity={0.55} />
+            <ValueTag x={67} y={46} label="E_th" value={vth} color={CYAN} />
+            <ValueTag x={67} y={90} label="Z_th" value={zthLabel} color={VIOLET} />
+            <ValueTag x={104} y={64} label="R_L" value={formatSI(rl, 'Ω', { digits: 3 })} color={AMBER} />
           </svg>
           <figcaption className="mt-0.5 text-center text-[9.5px] font-semibold text-spark-cyan">
-            Thévenin
+            Thévenin + charge
           </figcaption>
         </figure>
 
@@ -169,6 +191,58 @@ export function EquivalentSchematic({
           </figcaption>
         </figure>
       </div>
+
+      {/* --------------------------------- simulateur de charge R_L */}
+      {load && (
+        <div className="mt-2 rounded-lg border border-spark-amber/25 bg-ink-950/40 p-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-spark-amber">
+              <Zap size={11} /> Charge R<sub>L</sub>
+            </p>
+            <span className="font-mono text-[11px] font-semibold text-fg">
+              {formatSI(rl, 'Ω', { digits: 3 })}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={-1}
+            max={6}
+            step={0.05}
+            value={rlLog}
+            onChange={(e) => setRlLog(Number(e.target.value))}
+            className="w-full accent-amber-400"
+            aria-label="Résistance de charge R_L"
+          />
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center">
+            <div className="rounded-md bg-ink-900/60 px-1 py-1">
+              <p className="font-mono text-[8.5px] uppercase tracking-wide text-fg-mute">U_L</p>
+              <p className="font-mono text-[11px] font-semibold text-spark-cyan">{formatPhasor(load.uL)}</p>
+            </div>
+            <div className="rounded-md bg-ink-900/60 px-1 py-1">
+              <p className="font-mono text-[8.5px] uppercase tracking-wide text-fg-mute">I_L</p>
+              <p className="font-mono text-[11px] font-semibold text-spark-amber">{formatPhasor(load.iL, 'A')}</p>
+            </div>
+            <div className="rounded-md bg-ink-900/60 px-1 py-1">
+              <p className="font-mono text-[8.5px] uppercase tracking-wide text-fg-mute">P_L</p>
+              <p className="font-mono text-[11px] font-semibold text-emerald-400">
+                {formatSI(load.pL, 'W', { digits: 3 })}
+              </p>
+            </div>
+          </div>
+          <p className="mt-1.5 text-center text-[9px] leading-relaxed text-fg-mute">
+            {load.atMax ? (
+              <span className="font-semibold text-emerald-400">
+                R_L ≈ |Z_th| : transfert maximal (P_max = {formatSI(load.pMax, 'W', { digits: 3 })})
+              </span>
+            ) : (
+              <>
+                U<sub>L</sub> = U<sub>th</sub> · R<sub>L</sub> / (Z<sub>th</sub> + R<sub>L</sub>) · P_max ={' '}
+                {formatSI(load.pMax, 'W', { digits: 3 })} à R<sub>L</sub> = {formatSI(load.zAbs, 'Ω', { digits: 3 })}
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       <p className="mt-1.5 px-0.5 text-center text-[9.5px] leading-relaxed text-fg-mute">
         Z<sub>N</sub> = Z<sub>th</sub> · E<sub>th</sub> = Z<sub>th</sub> · I<sub>N</sub>

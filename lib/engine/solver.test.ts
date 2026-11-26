@@ -200,7 +200,8 @@ describe('MNA — équivalent Thévenin / Norton', () => {
       terminals: { a: node(2, 1), b: node(0, 0) },
     });
     const sol = solveDocument(d, { sourcesOn: true });
-    assert.equal(sol.ok, true, sol.error);
+    if (!sol.ok) assert.fail(sol.error);
+    assert.equal(sol.ok, true);
     approx(abs(sol.nodeVoltages[node(2, 1)]), 6);
     approx(abs(sol.readings.R1.i), 0.006);
     approx(abs(sol.readings.R2.v), 6);
