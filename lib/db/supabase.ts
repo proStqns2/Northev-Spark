@@ -22,12 +22,39 @@ export function supabaseAdmin(): SupabaseClient | null {
   }
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { 'x-application-name': 'northev-spark' } },
+    global: {
+      headers: { 'x-application-name': 'northev-spark' },
+      // borne chaque appel : un Supabase lent ou injoignable ne doit jamais
+      // bloquer l'inscription ou la connexion (le compte reste en local).
+      fetch: (input, init) =>
+        fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(1200) }),
+    },
   });
   return cached;
 }
 
 export const cloudEnabled = (): boolean => supabaseAdmin() !== null;
+
+/**
+ * Borne l'attente d'un appel Supabase.
+ *
+ * Le client réessaie les GET avec backoff : si Supabase est lent ou
+ * injoignable, l'inscription/connexion ne doit pas attendre des secondes.
+ * Au-delà du délai, on continue en mode local (le compte reste valide).
+ */
+async function withTimeout<T>(promise: PromiseLike<T>, ms = 1500): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function isMissingTable(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -72,11 +99,15 @@ export async function backfillUser(user: StoredUser): Promise<void> {
 export async function pullUserByEmail(email: string): Promise<StoredUser | null> {
   const sb = supabaseAdmin();
   if (!sb) return null;
-  const { data, error } = await sb
-    .from('profiles')
-    .select('id,email,name,avatar,theme,role,password_hash,bio,institution,created_at,last_seen_at')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle();
+  const result = await withTimeout(
+    sb
+      .from('profiles')
+      .select('id,email,name,avatar,theme,role,password_hash,bio,institution,created_at,last_seen_at')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle(),
+  );
+  if (!result) return null; // délai dépassé : on continue en local
+  const { data, error } = result;
   if (error) {
     if (!isMissingTable(error)) console.warn('[supabase] profiles select:', error.message);
     return null;
@@ -144,14 +175,18 @@ interface CircuitRow {
 export async function pullCircuits(ownerId: string): Promise<StoredCircuit[]> {
   const sb = supabaseAdmin();
   if (!sb) return [];
-  const { data, error } = await sb
-    .from('circuits')
-    .select(
-      'id, owner_id, name, notes, doc, template_slug, status, starred, last_result, collaborators, created_at, updated_at',
-    )
-    .eq('owner_id', ownerId)
-    .order('updated_at', { ascending: false })
-    .limit(200);
+  const result = await withTimeout(
+    sb
+      .from('circuits')
+      .select(
+        'id, owner_id, name, notes, doc, template_slug, status, starred, last_result, collaborators, created_at, updated_at',
+      )
+      .eq('owner_id', ownerId)
+      .order('updated_at', { ascending: false })
+      .limit(200),
+  );
+  if (!result) return [];
+  const { data, error } = result;
   if (error) {
     if (!isMissingTable(error)) console.warn('[supabase] circuits select:', error.message);
     return [];
