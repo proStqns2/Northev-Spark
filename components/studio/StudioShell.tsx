@@ -18,6 +18,8 @@ import {
   Redo2,
   Save,
   Share2,
+  Flag,
+  PlugZap,
   Sparkles,
   Split,
   Undo2,
@@ -30,6 +32,8 @@ import { abs } from '@/lib/engine/complex';
 import { CircuitCanvas, Tool } from './CircuitCanvas';
 import { Palette } from './Palette';
 import { BuildBox } from './BuildBox';
+import { ValuePalette } from './ValuePalette';
+import { SetupGuide } from './SetupGuide';
 import { GeminiHelp } from './GeminiHelp';
 import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
@@ -92,7 +96,7 @@ export function StudioShell({
   collaboration,
 }: Props) {
   const studio = useStudio(initialDoc);
-  const [boxMode, setBoxMode] = useState<'build' | 'compact'>('build');
+  const [boxMode, setBoxMode] = useState<'values' | 'build' | 'compact'>('values');
   const [projectId, setProjectId] = useState<string | undefined>(initialProjectId);
   const { doc, setDoc, selected, selectedId, setSelectedId } = studio;
   const { equivalent, solution } = useCircuitEngine(doc);
@@ -104,12 +108,31 @@ export function StudioShell({
   const [flowSpeed, setFlowSpeed] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
   const [split, setSplit] = useState(true);
+  const [resultsHeight, setResultsHeight] = useState(300);
+  const resultsDragRef = useRef<{ startY: number; startH: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'palette' | 'results'>('none');
   const [menuOpen, setMenuOpen] = useState(false);
   const [geminiOpen, setGeminiOpen] = useState(false);
   const [geminiConfigured, setGeminiConfigured] = useState(false);
+  /** valeurs saisies par l'utilisateur, par type de dipôle */
+  const [draftValues, setDraftValues] = useState<Record<string, number>>({});
+  const [guideHidden, setGuideHidden] = useState(false);
+
+  const setComponentValue = useCallback(
+    (id: string, value: number) => {
+      setDoc(
+        {
+          ...doc,
+          components: doc.components.map((c) => (c.id === id ? { ...c, value } : c)),
+        },
+        { commit: true },
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc],
+  );
   const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -549,29 +572,40 @@ export function StudioShell({
         {/* palette */}
         <aside className="hidden w-[210px] shrink-0 border-r border-line/60 bg-ink-900/40 lg:flex lg:flex-col">
           <div className="flex shrink-0 gap-1 border-b border-line/50 p-1.5">
-            <button
-              type="button"
-              onClick={() => setBoxMode('build')}
-              className={cn(
-                'flex-1 rounded-md px-1.5 py-1 text-[10px] font-medium transition',
-                boxMode === 'build' ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
-              )}
-            >
-              Build Box
-            </button>
-            <button
-              type="button"
-              onClick={() => setBoxMode('compact')}
-              className={cn(
-                'flex-1 rounded-md px-1.5 py-1 text-[10px] font-medium transition',
-                boxMode === 'compact' ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
-              )}
-            >
-              Compacte
-            </button>
+            {(
+              [
+                { id: 'values', label: 'Valeurs' },
+                { id: 'build', label: 'Build Box' },
+                { id: 'compact', label: 'Compacte' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setBoxMode(tab.id)}
+                className={cn(
+                  'flex-1 rounded-md px-1 py-1 text-[10px] font-medium transition',
+                  boxMode === tab.id ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
           <div className="min-h-0 flex-1">
-            {boxMode === 'build' ? (
+            {boxMode === 'values' ? (
+              <ValuePalette
+                draft={draftValues}
+                onDraft={(kind, value) => {
+                  setDraftValues((current) => ({ ...current, [kind]: value }));
+                  setTool({ mode: 'place', kind });
+                }}
+                activeKind={tool.mode === 'place' ? tool.kind : null}
+                onPick={(kind) => setTool({ mode: 'place', kind })}
+                components={doc.components}
+                onEditComponent={setComponentValue}
+              />
+            ) : boxMode === 'build' ? (
               <BuildBox
                 onPick={(kind) => setTool({ mode: 'place', kind })}
                 activeKind={tool.mode === 'place' ? tool.kind : null}
@@ -600,7 +634,10 @@ export function StudioShell({
               doc={doc}
               onChange={change}
               tool={tool}
-              onToolDone={() => setTool({ mode: 'select' })}
+              nextValue={tool.mode === 'place' ? draftValues[tool.kind] : undefined}
+              onToolDone={() => {
+                setTool((current) => (current.mode === 'place' ? current : { mode: 'select' }));
+              }}
               selectedId={selectedId}
               onSelect={setSelectedId}
               readings={solution.ok ? solution.readings : undefined}
@@ -617,6 +654,16 @@ export function StudioShell({
               <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-spark-amber/40 bg-ink-950/90 px-3 py-1.5 text-[11px] text-spark-amber backdrop-blur">
                 Lecture seule — l’hôte de l’atelier contrôle le montage
               </div>
+            ) : null}
+
+            {!guideHidden ? (
+              <SetupGuide
+                doc={doc}
+                equivalent={equivalent}
+                onGround={() => setTool({ mode: 'ground' })}
+                onTerminal={(which) => setTool({ mode: 'terminal', which })}
+                onDismiss={() => setGuideHidden(true)}
+              />
             ) : null}
 
             {/* participants live */}
@@ -644,10 +691,32 @@ export function StudioShell({
             ) : null}
           </div>
 
-          {/* barre de résultats (division) */}
+          {/* barre de résultats (division, redimensionnable) */}
           {split ? (
-            <div className="h-[258px] shrink-0 border-t border-line/70 bg-ink-900/70">
-              <ResultsPanel doc={doc} equivalent={equivalent} solution={solution} digits={4} />
+            <div className="shrink-0 border-t border-line/70 bg-ink-900/70" style={{ height: resultsHeight }}>
+              <div
+                role="separator"
+                aria-label="Redimensionner les résultats"
+                onPointerDown={(event) => {
+                  resultsDragRef.current = { startY: event.clientY, startH: resultsHeight };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  const drag = resultsDragRef.current;
+                  if (!drag) return;
+                  const next = drag.startH - (event.clientY - drag.startY);
+                  setResultsHeight(Math.max(160, Math.min(640, next)));
+                }}
+                onPointerUp={() => {
+                  resultsDragRef.current = null;
+                }}
+                className="group flex h-1.5 cursor-ns-resize items-center justify-center bg-line/0 transition hover:bg-spark-cyan/20"
+              >
+                <span className="h-0.5 w-8 rounded-full bg-line transition group-hover:bg-spark-cyan/70" />
+              </div>
+              <div className="h-[calc(100%-6px)]">
+                <ResultsPanel doc={doc} equivalent={equivalent} solution={solution} digits={4} />
+              </div>
             </div>
           ) : (
             <div className="flex shrink-0 items-center gap-3 border-t border-line/70 bg-ink-900/80 px-3 py-2">
@@ -716,7 +785,7 @@ export function StudioShell({
           onClick={() => setMobilePanel((v) => (v === 'palette' ? 'none' : 'palette'))}
           className={cn('btn btn-sm flex-1', mobilePanel === 'palette' && 'border-spark-cyan/50 text-spark-cyan')}
         >
-          <FolderOpen size={13} /> Dipôles
+          <FolderOpen size={13} /> Valeurs
         </button>
         <button
           type="button"
@@ -748,7 +817,7 @@ export function StudioShell({
         <div className="fixed inset-x-0 bottom-0 z-40 h-[65vh] rounded-t-2xl border-t border-line/70 bg-ink-950/98 backdrop-blur-xl lg:hidden">
           <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
             <span className="text-xs font-medium">
-              {mobilePanel === 'palette' ? 'Palette de dipôles' : 'Résultats d’équivalence'}
+              {mobilePanel === 'palette' ? 'Valeurs & dipôles' : 'Résultats d’équivalence'}
             </span>
             <button type="button" onClick={() => setMobilePanel('none')} className="btn btn-ghost btn-sm">
               Fermer
@@ -756,26 +825,50 @@ export function StudioShell({
           </div>
           <div className="h-[calc(65vh-44px)] overflow-y-auto">
             {mobilePanel === 'palette' ? (
-              <BuildBox
-                onPick={(kind) => {
-                  setTool({ mode: 'place', kind });
-                  setMobilePanel('none');
-                }}
-                activeKind={tool.mode === 'place' ? tool.kind : null}
-                onTerminal={(which) => {
-                  setTool({ mode: 'terminal', which });
-                  setMobilePanel('none');
-                }}
-                onGround={() => {
-                  setTool({ mode: 'ground' });
-                  setMobilePanel('none');
-                }}
-                onErase={() => {
-                  setTool({ mode: 'erase' });
-                  setMobilePanel('none');
-                }}
-                toolMode={tool.mode}
-              />
+              <div className="flex h-full flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <ValuePalette
+                    draft={draftValues}
+                    onDraft={(kind, value) => setDraftValues((prev) => ({ ...prev, [kind]: value }))}
+                    activeKind={tool.mode === 'place' ? tool.kind : null}
+                    onPick={(kind) => setTool({ mode: 'place', kind })}
+                    components={doc.components}
+                    onEditComponent={setComponentValue}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 border-t border-line/60 p-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTool({ mode: 'ground' });
+                      setMobilePanel('none');
+                    }}
+                    className="btn btn-sm flex-1"
+                  >
+                    <PlugZap size={12} /> Masse
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTool({ mode: 'terminal', which: 'a' });
+                      setMobilePanel('none');
+                    }}
+                    className="btn btn-sm flex-1"
+                  >
+                    <Flag size={12} /> Borne A
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTool({ mode: 'terminal', which: 'b' });
+                      setMobilePanel('none');
+                    }}
+                    className="btn btn-sm flex-1"
+                  >
+                    <Flag size={12} /> Borne B
+                  </button>
+                </div>
+              </div>
             ) : (
               <ResultsPanel doc={doc} equivalent={equivalent} solution={solution} digits={4} compact />
             )}

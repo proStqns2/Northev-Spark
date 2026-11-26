@@ -19,6 +19,8 @@ import { AnalysisResult, AnalysisFailure } from '@/lib/engine/solver';
 import { formatSI, formatPhasor } from '@/lib/engine/format';
 import { abs } from '@/lib/engine/complex';
 import { reduceSeriesParallel } from '@/lib/engine/reduce';
+import { EquivalentSchematic } from './EquivalentSchematic';
+import { CircuitDiagnostics } from './CircuitDiagnostics';
 import { cn } from '@/lib/utils';
 
 type Tab = 'equivalent' | 'reduction' | 'details';
@@ -93,6 +95,8 @@ export function ResultsPanel({
       <div className="flex-1 overflow-y-auto p-2.5">
         {tab === 'equivalent' ? (
           <div className="space-y-2.5">
+            <EquivalentSchematic equivalent={equivalent} regime={doc.regime} />
+            <CircuitDiagnostics doc={doc} equivalent={equivalent} />
             <div className="grid grid-cols-3 gap-1.5">
               <ValueCard label="U_th" value={vth} sub="tension à vide" tone={equivalent.ok ? 'cyan' : 'muted'} />
               <ValueCard

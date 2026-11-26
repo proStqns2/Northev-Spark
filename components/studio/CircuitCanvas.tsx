@@ -54,6 +54,8 @@ interface Props {
     tool: string;
   }) => void;
   showPresencePills?: boolean;
+  /** valeur à appliquer au prochain dipôle posé (saisie dans le panneau Valeurs) */
+  nextValue?: number;
 }
 
 const MIN_VIEW = { w: 700, h: 430 };
@@ -75,12 +77,19 @@ export function CircuitCanvas({
   localId = '',
   onCursorMove,
   showPresencePills = false,
+  nextValue,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState({ x: -40, y: -40, w: 700, h: 430 });
   const [hover, setHover] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ from: string; to: string } | null>(null);
+  /**
+   * Placement « en deux clics » : le premier clic pose l'ancre, le second le
+   * dipôle. C'est ce que l'interface annonce (« cliquez deux nœuds ») — le
+   * glisser reste possible pour aller plus vite.
+   */
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [drag, setDrag] = useState<{
     id: string;
     start: { x: number; y: number };
@@ -244,16 +253,51 @@ export function CircuitCanvas({
     if (draft) {
       const from = cellToPoint(draft.from);
       const to = cellToPoint(draft.to);
-      if (from && to && (from.x !== to.x || from.y !== to.y) && tool.mode === 'place') {
-        const horizontal = Math.abs(to.y - from.y) <= Math.abs(to.x - from.x);
-        const end = horizontal
-          ? pointToCell(to.x, from.y)
-          : pointToCell(from.x, to.y);
-        if (end !== draft.from) {
-          const result = addComponent(doc, tool.kind, draft.from, end);
-          onChange(result.doc, { commit: true });
-          onSelect(result.component.id);
+      if (tool.mode === 'place') {
+        // --- glisser : du premier au dernier point, on aligne sur l'axe dominant
+        if (from && to && (from.x !== to.x || from.y !== to.y)) {
+          const horizontal = Math.abs(to.y - from.y) <= Math.abs(to.x - from.x);
+          const end = horizontal ? pointToCell(to.x, from.y) : pointToCell(from.x, to.y);
+          if (end !== draft.from) {
+            const result = addComponent(doc, tool.kind, draft.from, end, nextValue ? { value: nextValue } : {});
+            onChange(result.doc, { commit: true });
+            onSelect(result.component.id);
+            setAnchor(null);
+            setDraft(null);
+            onToolDone?.();
+            return;
+          }
         }
+
+        // --- clic simple : premier clic = ancre, second clic = dipôle
+        const cell = draft.from;
+        if (!anchor) {
+          setAnchor(cell);
+          setDraft(null);
+          return;
+        }
+        if (anchor !== cell) {
+          // on aligne le second point sur l'axe dominant pour rester sur la grille
+          const a = cellToPoint(anchor);
+          const b = cellToPoint(cell);
+          if (a && b) {
+            const horizontal = Math.abs(b.y - a.y) <= Math.abs(b.x - a.x);
+            const end = horizontal ? pointToCell(b.x, a.y) : pointToCell(a.x, b.y);
+            if (end !== anchor) {
+              const result = addComponent(doc, tool.kind, anchor, end, nextValue ? { value: nextValue } : {});
+              onChange(result.doc, { commit: true });
+              onSelect(result.component.id);
+            }
+          }
+          setAnchor(null);
+          setDraft(null);
+          onToolDone?.();
+          return;
+        }
+        // second clic sur la même cellule : on annule l'ancre
+        setAnchor(null);
+        setDraft(null);
+        return;
       }
       setDraft(null);
       onToolDone?.();
@@ -625,6 +669,44 @@ export function CircuitCanvas({
             ) : null}
           </g>
         ) : null}
+
+        {/* --------------------- ancre du placement en deux clics ---------------- */}
+        {anchor && tool.mode === 'place' ? (() => {
+          const a = cellToPoint(anchor);
+          if (!a) return null;
+          const ax = a.x * GRID;
+          const ay = a.y * GRID;
+          const hx = hoverPoint ? hoverPoint.x * GRID : null;
+          const hy = hoverPoint ? hoverPoint.y * GRID : null;
+          return (
+            <g pointerEvents="none">
+              <circle cx={ax} cy={ay} r={9} fill="none" stroke="#38e1e6" strokeWidth={2} />
+              <circle cx={ax} cy={ay} r={3.4} fill="#38e1e6" />
+              {hx !== null && hy !== null ? (
+                <>
+                  <line
+                    x1={ax}
+                    y1={ay}
+                    x2={hx}
+                    y2={hy}
+                    stroke="#38e1e6"
+                    strokeWidth={1.6}
+                    strokeDasharray="6 5"
+                    opacity={0.8}
+                  />
+                  <g
+                    transform={`translate(${(ax + hx) / 2} ${(ay + hy) / 2}) rotate(${
+                      (Math.atan2(hy - ay, hx - ax) * 180) / Math.PI
+                    }) scale(${Math.max(Math.hypot(hx - ax, hy - ay), 60) / 100})`}
+                    opacity={0.55}
+                  >
+                    <NormSymbol kind={tool.kind} color={KIND_COLORS[tool.kind]} />
+                  </g>
+                </>
+              ) : null}
+            </g>
+          );
+        })() : null}
 
         {hoverPoint && tool.mode !== 'select' ? (
           <g pointerEvents="none">
