@@ -9,7 +9,7 @@ import { AgentId } from './agents';
 export interface AgentReply {
   agent: AgentId;
   task: string;
-  provider: 'local' | 'openai' | 'gemini';
+  provider: 'local' | 'openai' | 'gemini' | 'openrouter';
   headline: string;
   body: string;
   metrics: Array<{ label: string; value: string; tone?: 'good' | 'warn' | 'bad' }>;

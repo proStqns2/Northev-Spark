@@ -15,6 +15,7 @@ export async function GET() {
     providers: {
       openai: Boolean(process.env.OPENAI_API_KEY),
       gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
+      openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     },
   });
 }

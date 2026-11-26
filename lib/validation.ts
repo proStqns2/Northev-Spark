@@ -101,7 +101,7 @@ export const roomPatchSchema = z.object({
 });
 
 export const aiSchema = z.object({
-  agent: z.enum(['theo', 'nora', 'impeda', 'volt', 'mentor']),
+  agent: z.enum(['theo', 'nora', 'impeda', 'volt', 'mentor', 'convert', 'lab', 'sources', 'hub', 'coils', 'dipoles']),
   task: z.enum([
     'equivalence',
     'verification',
@@ -116,7 +116,7 @@ export const aiSchema = z.object({
   ]),
   doc: circuitDocSchema.optional(),
   question: z.string().max(600).optional(),
-  provider: z.enum(['auto', 'openai', 'gemini', 'local']).optional(),
+  provider: z.enum(['auto', 'openai', 'gemini', 'openrouter', 'local']).optional(),
 });
 
 export const importSchema = z.object({

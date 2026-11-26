@@ -5,12 +5,13 @@ import { abs } from '@/lib/engine/complex';
 import { AgentId } from './agents';
 import { AgentReply, runLocalAgent } from './local';
 
-export type Provider = 'openai' | 'gemini' | 'local';
+export type Provider = 'openai' | 'gemini' | 'openrouter' | 'local';
 
 export function providerStatus() {
   return {
     openai: Boolean(process.env.OPENAI_API_KEY),
     gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
+    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     local: true,
   };
 }
@@ -85,6 +86,45 @@ async function callOpenAI(system: string, user: string, signal: AbortSignal): Pr
   return text;
 }
 
+/**
+ * OpenRouter — passerelle unique vers des dizaines de modèles
+ * (format « OpenAI compatible »). La clé `sk-or-v1-…` reste côté serveur.
+ * Modèle par défaut : un modèle rapide et bon marché, surchargeable par
+ * OPENROUTER_MODEL. Les en-têtes HTTP-Referer / X-Title identifient l'app.
+ */
+async function callOpenRouter(system: string, user: string, signal: AbortSignal): Promise<string> {
+  const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001';
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'HTTP-Referer': process.env.APP_URL || 'https://northev-spark.vercel.app',
+      'X-Title': 'Northev Spark',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      max_tokens: 800,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`OpenRouter ${response.status}: ${detail.replace(/sk-or-[A-Za-z0-9\-]+/g, 'sk-or-***').slice(0, 180)}`);
+  }
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Réponse OpenRouter vide.');
+  return text;
+}
+
 async function callGemini(system: string, user: string, signal: AbortSignal): Promise<string> {
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -115,7 +155,7 @@ export async function runAgent(input: {
   task: string;
   doc?: CircuitDoc;
   question?: string;
-  provider?: 'auto' | 'openai' | 'gemini' | 'local';
+  provider?: 'auto' | 'openai' | 'gemini' | 'openrouter' | 'local';
 }): Promise<AgentReply> {
   const local = runLocalAgent(input.agent, input.task, input.doc, input.question);
   const status = providerStatus();
@@ -132,11 +172,17 @@ export async function runAgent(input: {
           ? status.gemini
             ? 'gemini'
             : 'local'
-          : status.openai
-            ? 'openai'
-            : status.gemini
-              ? 'gemini'
-              : 'local';
+          : requested === 'openrouter'
+            ? status.openrouter
+              ? 'openrouter'
+              : 'local'
+            : /* auto */ status.openrouter
+              ? 'openrouter'
+              : status.openai
+                ? 'openai'
+                : status.gemini
+                  ? 'gemini'
+                  : 'local';
 
   if (useProvider === 'local') {
     return { ...local, provider: 'local', warning: requested !== 'local' && requested !== 'auto' ? 'Fournisseur demandé indisponible : réponse du moteur local.' : local.warning };
@@ -149,7 +195,9 @@ export async function runAgent(input: {
     const text =
       useProvider === 'openai'
         ? await callOpenAI(SYSTEM_PROMPT, context, controller.signal)
-        : await callGemini(SYSTEM_PROMPT, context, controller.signal);
+        : useProvider === 'openrouter'
+          ? await callOpenRouter(SYSTEM_PROMPT, context, controller.signal)
+          : await callGemini(SYSTEM_PROMPT, context, controller.signal);
     return {
       ...local,
       provider: useProvider,

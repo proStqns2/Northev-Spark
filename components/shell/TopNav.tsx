@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
   Users,
   X,
   Zap,
+  Crown,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
@@ -27,7 +29,8 @@ const LINKS = [
   { href: '/symboles', label: 'Symboles', icon: Shapes },
   { href: '/bibliotheque', label: 'Bibliothèque', icon: BookOpen },
   { href: '/multiwork', label: 'Multiwork', icon: Users },
-  { href: '/premium', label: 'Agents IA', icon: Sparkles, badge: 'Premium' },
+  { href: '/agents', label: 'Agents', icon: Sparkles },
+  { href: '/premium', label: 'Premium', icon: Crown, badge: 'IA' },
   { href: '/export', label: 'Export', icon: FlaskConical },
 ];
 
@@ -64,10 +67,17 @@ export function TopNav({ user }: { user: SessionUser | null }) {
       )}
     >
       <div className="mx-auto flex h-16 max-w-[1500px] items-center gap-3 px-4 sm:px-6">
-        <Link href="/" className="group flex items-center gap-2.5">
-          <span className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-spark-cyan/40 bg-ink-900 text-spark-cyan shadow-glow-sm">
-            <Zap size={18} className="transition group-hover:scale-110" />
-            <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/5" />
+        <Link href="/" className="group flex items-center gap-2.5" aria-label="Northev Spark — accueil">
+          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-line/60 bg-[#ececeb] shadow-glow-sm transition group-hover:border-spark-cyan/50">
+            {/* monogramme isométrique officiel */}
+            <Image
+              src="/brand/logo-192.png"
+              alt=""
+              width={36}
+              height={36}
+              className="h-[34px] w-[34px] object-contain transition group-hover:scale-[1.06]"
+              priority
+            />
           </span>
           <span className="hidden flex-col leading-none sm:flex">
             <span className="text-[15px] font-semibold tracking-tight">

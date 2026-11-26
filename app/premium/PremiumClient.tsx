@@ -19,6 +19,7 @@ import {
   Send,
   Sparkles,
   Zap,
+  Wand2,
 } from 'lucide-react';
 import { AGENTS, AgentDefinition, AgentId } from '@/lib/ai/agents';
 import { AgentReply } from '@/lib/ai/local';
@@ -32,7 +33,7 @@ interface Props {
   user: { id: string; name: string } | null;
   circuitDoc: string | null;
   circuitName: string | null;
-  providers: { openai: boolean; gemini: boolean };
+  providers: { openai: boolean; gemini: boolean; openrouter?: boolean };
 }
 
 export function PremiumClient({ user, circuitDoc, circuitName, providers }: Props) {
@@ -52,7 +53,7 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
   const [selected, setSelected] = useState<AgentId>('theo');
   const [task, setTask] = useState<string>('equivalence');
   const [question, setQuestion] = useState('');
-  const [provider, setProvider] = useState<'auto' | 'local' | 'openai' | 'gemini'>('auto');
+  const [provider, setProvider] = useState<'auto' | 'local' | 'openai' | 'gemini' | 'openrouter'>('auto');
   const [loading, setLoading] = useState(false);
   const [replies, setReplies] = useState<AgentReply[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +93,13 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
         `Réponse de ${AGENTS.find((a) => a.id === agentId)?.name}`,
         payload.reply.provider === 'local'
           ? 'Moteur symbolique local (aucune clé requise).'
-          : `Réponse générée par ${payload.reply.provider === 'openai' ? 'OpenAI' : 'Gemini'}.`,
+          : `Réponse générée par ${
+              payload.reply.provider === 'openai'
+                ? 'OpenAI'
+                : payload.reply.provider === 'openrouter'
+                  ? 'OpenRouter'
+                  : 'Gemini'
+            }.`,
       );
     } catch (e) {
       setError((e as Error).message);
@@ -152,6 +159,14 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
               >
                 <Sparkles size={11} /> Gemini {providers.gemini ? 'connecté' : 'non configuré'}
               </span>
+              <span
+                className={cn(
+                  'chip',
+                  providers.openrouter ? 'border-spark-green/40 text-spark-green' : 'text-fg-mute',
+                )}
+              >
+                <Wand2 size={11} /> OpenRouter {providers.openrouter ? 'connecté' : 'non configuré'}
+              </span>
               <span className="chip border-spark-cyan/40 text-spark-cyan">
                 <Cpu size={11} /> moteur local toujours actif
               </span>
@@ -202,7 +217,7 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
                       className="rounded px-1 py-0.5 font-mono text-[8px] uppercase"
                       style={{ color: item.color, background: `${item.color}18` }}
                     >
-                      {item.model}
+                      {item.task}
                     </span>
                   </span>
                   <span className="block text-[10.5px] text-fg-mute">{item.role}</span>
@@ -265,6 +280,9 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
               </option>
               <option value="gemini" disabled={!providers.gemini}>
                 Gemini {providers.gemini ? '' : '(clé absente)'}
+              </option>
+              <option value="openrouter" disabled={!providers.openrouter}>
+                OpenRouter {providers.openrouter ? '' : '(clé absente)'}
               </option>
             </select>
           </div>

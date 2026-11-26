@@ -103,6 +103,10 @@ Le studio expose un bouton **Gemini** qui ouvre deux outils :
 | **Schéma équivalent** | Gemini propose un montage Thévenin/Norton en JSON ; le serveur valide la structure (zod, types autorisés), le **recalcule** avec le solveur, puis mesure l'écart sur U_th et I_N (8 % max en DC). Au-delà, la proposition est affichée mais **non certifiée**. |
 | **Rééquilibrer** | 10 contrôles déterministes (aucun appel IA) : bornes, masse, valeurs nulles, source court-circuitée, source de courant ouverte, fréquence AC, doublons… Chaque correction est expliquée. |
 
+**Fournisseurs** — `OPENROUTER_API_KEY` (routeur multi-modèles, format OpenAI), `GEMINI_API_KEY`,
+`OPENAI_API_KEY`. Ordre en mode `auto` : OpenRouter → OpenAI → Gemini → moteur local. Le repli est
+silencieux pour l'utilisateur (la réponse locale est toujours produite) et la clé est expurgée des erreurs.
+
 **Sécurité de la clé** — la clé n'est jamais dans le bundle client :
 
 - `GEMINI_API_KEY` est lue dans le route handler Node (`/api/ai/schema`), jamais préfixée `NEXT_PUBLIC_` ;
@@ -112,6 +116,24 @@ Le studio expose un bouton **Gemini** qui ouvre deux outils :
 - priorité d'usage : clé personnelle → clé serveur → message d'aide.
 
 Routes : `GET|POST /api/ai/schema`, `POST /api/ai/balance`, `GET|POST|DELETE /api/profile/keys`.
+
+### Agents IA — les dix tuiles du manuel
+
+`/agents` présente les dix agents, chacun avec son emblème d'origine
+(`public/agents/tiles/`, découpé depuis la planche fournie) :
+
+| Agent | Emblème | Rôle |
+|---|---|---|
+| Théo | Thévenin : série | analyse nodale modifiée, U_th / Z_th |
+| Nora | Norton : parallèle | I_N, R_N, cohérence T ⇄ N |
+| Équivalence | Équivalence T ⇄ N | passerelle entre les deux modèles |
+| Impéda | Thévenin AC : série RL | impédances complexes, phase |
+| Bobines | Norton AC : parallèle RL | admittances et régime sinusoïdal |
+| Labo T–N | Labo de calcul : T–N | mesures à vide / court-circuit |
+| Sources | Transformation de sources | réduction par équivalences locales |
+| Hub | Hub principal : équivalence | synthèse et validation |
+| Dipôles | Dipôles équivalents | caractéristique U(I) |
+| Volt / Mentor | — | audit et pédagogie |
 
 ### Agents IA
 
@@ -234,6 +256,8 @@ lib/
 server/                 serveur temps réel Node (WebSocket natif + API REST)
 angular-workshop/       client Angular de l'atelier collaboratif
 public/symbols/         captures de référence des symboles du cours
+public/brand/           logo isométrique (512/192, version sombre)
+public/agents/tiles/    les 10 emblèmes d'agents extraits de la planche
 supabase/schema.sql     schéma complet (tables, index, triggers, RLS)
 scripts/                vérification moteur + seed démo
 ```
