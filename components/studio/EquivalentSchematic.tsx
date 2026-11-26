@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, Zap } from 'lucide-react';
 import { EquivalentResult } from '@/lib/engine/equivalent';
 import { formatPhasor, formatSI } from '@/lib/engine/format';
@@ -101,6 +101,19 @@ export function EquivalentSchematic({
   // Curseur logarithmique : R_L de 0,1 Ω à 1 MΩ.
   const [rlLog, setRlLog] = useState(2.7); // ≈ 500 Ω par défaut
   const rl = useMemo(() => Math.pow(10, rlLog), [rlLog]);
+
+  // Quand le circuit change, on recale la charge sur |Z_th| : l'adaptation
+  // (transfert maximal) est le point de départ le plus parlant.
+  const zthRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!equivalent.ok) return;
+    const magnitude = abs(equivalent.rth);
+    if (!Number.isFinite(magnitude) || magnitude <= 0) return;
+    const previous = zthRef.current;
+    if (previous !== null && Math.abs(previous - magnitude) / magnitude < 0.01) return;
+    zthRef.current = magnitude;
+    setRlLog(Math.min(6, Math.max(-1, Math.log10(magnitude))));
+  }, [equivalent]);
 
   const load = useMemo(() => {
     if (!equivalent.ok) return null;
