@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Northev Spark — Profil</title>
+  <meta name="description" content="Page de profil Northev Spark : consultez et modifiez votre profil, votre avatar et le thème du site." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='0.9em'%20font-size='88'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E" />
+  <script>
+    /* Applique le thème enregistré avant le premier rendu (évite le flash clair/sombre). */
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem('northev.theme') || '{}');
+        var mode = s.mode || 'system';
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = mode === 'system' ? (dark ? 'dark' : 'light') : mode;
+        if (s.accent) document.documentElement.style.setProperty('--accent', s.accent);
+        if (s.radius != null) document.documentElement.style.setProperty('--radius', s.radius + 'px');
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <script src="assets/js/theme.js" defer></script>
+  <script src="assets/js/profile.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav" aria-label="Navigation principale">
+      <a class="brand" href="index.html">
+        <span class="brand-chip" aria-hidden="true">⚡</span>
+        <span class="brand-name">Northev <strong>Spark</strong></span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">Accueil</a>
+        <a href="profil.html" aria-current="page">Profil</a>
+      </div>
+      <div class="nav-right">
+        <a class="nav-me" href="profil.html" title="Ouvrir mon profil" aria-label="Ouvrir mon profil">
+          <span id="navAvatar" class="nav-avatar avatar"></span>
+        </a>
+        <div class="theme-wrap">
+          <button id="themeBtn" class="btn btn--icon" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="themePanel" title="Thème du site">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="btn-text">Thème</span>
+          </button>
+          <div id="themePanel" class="popover" role="dialog" aria-label="Thème du site">
+            <p class="popover-title">Thème du site</p>
+            <p class="popover-sub">Enregistré dans votre navigateur, appliqué sur toutes les pages.</p>
+            <div class="popover-row">
+              <span class="popover-label" id="modeLabel">Mode</span>
+              <div class="segmented" role="group" aria-labelledby="modeLabel">
+                <button type="button" data-mode="system" aria-pressed="false">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                  Système
+                </button>
+                <button type="button" data-mode="light" aria-pressed="false">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                  Clair
+                </button>
+                <button type="button" data-mode="dark" aria-pressed="false">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  Sombre
+                </button>
+              </div>
+            </div>
+            <div class="popover-row">
+              <span class="popover-label">Couleur d'accent</span>
+              <div class="swatches">
+                <button type="button" class="swatch" data-accent="#6d4aff" style="background:#6d4aff" aria-label="Violet" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#2563eb" style="background:#2563eb" aria-label="Bleu" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#0d9488" style="background:#0d9488" aria-label="Sarcelle" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#16a34a" style="background:#16a34a" aria-label="Vert" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#ea580c" style="background:#ea580c" aria-label="Orange" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#dc2626" style="background:#dc2626" aria-label="Rouge" aria-pressed="false"></button>
+                <button type="button" class="swatch" data-accent="#db2777" style="background:#db2777" aria-label="Rose" aria-pressed="false"></button>
+                <span class="swatch swatch--custom" title="Couleur personnalisée">
+                  <input type="color" id="accentPicker" value="#6d4aff" aria-label="Couleur d'accent personnalisée" />
+                </span>
+              </div>
+            </div>
+            <div class="popover-row">
+              <label class="popover-label" for="radiusRange">Arrondi des coins</label>
+              <div class="radius-row">
+                <input type="range" id="radiusRange" min="0" max="24" step="2" />
+                <output id="radiusValue" for="radiusRange">14 px</output>
+              </div>
+            </div>
+            <button type="button" id="themeReset" class="btn btn--ghost btn--block btn--sm">Réinitialiser le thème</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page page--profile">
+    <div class="profile-card card">
+      <div class="profile-cover" aria-hidden="true"></div>
+
+      <!-- ============ Mode consultation ============ -->
+      <section id="profileView" class="profile-body" aria-label="Profil">
+        <div class="profile-head">
+          <span id="pvAvatar" class="avatar"></span>
+          <div class="profile-id">
+            <h1 id="pvName">—</h1>
+            <p class="username" id="pvUsername"></p>
+            <p class="tagline" id="pvJob"></p>
+          </div>
+          <div class="profile-actions">
+            <button type="button" id="editBtn" class="btn btn--primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Modifier le profil
+            </button>
+          </div>
+        </div>
+
+        <dl class="info-grid">
+          <div class="info-item" id="rowLocation">
+            <dt>Localisation</dt>
+            <dd id="pvLocation"></dd>
+          </div>
+          <div class="info-item" id="rowEmail">
+            <dt>E-mail</dt>
+            <dd><a id="pvEmail" href="#"></a></dd>
+          </div>
+          <div class="info-item" id="rowWebsite">
+            <dt>Site web</dt>
+            <dd><a id="pvWebsite" href="#"></a></dd>
+          </div>
+          <div class="info-item" id="rowGithub">
+            <dt>GitHub</dt>
+            <dd><a id="pvGithub" href="#"></a></dd>
+          </div>
+          <div class="info-item info-item--bio" id="rowBio">
+            <dt>Biographie</dt>
+            <dd id="pvBio"></dd>
+          </div>
+        </dl>
+      </section>
+
+      <!-- ============ Mode édition ============ -->
+      <section id="profileEdit" class="profile-body" aria-label="Modifier le profil" hidden>
+        <form id="profileForm" novalidate>
+          <div class="form-avatar">
+            <span id="evAvatar" class="avatar"></span>
+            <div class="form-avatar-info">
+              <strong>Photo de profil</strong>
+              <div class="form-avatar-buttons">
+                <button type="button" class="btn btn--sm" id="avatarBtn">Changer la photo…</button>
+                <button type="button" class="btn btn--sm btn--ghost btn--danger" id="avatarRemoveBtn">Retirer</button>
+              </div>
+              <small class="hint">JPG ou PNG — recadrée et réduite automatiquement en 256 × 256.</small>
+              <input type="file" id="avatarInput" accept="image/*" hidden />
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="fFirstName">Prénom <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" id="fFirstName" name="firstName" type="text" required maxlength="40" autocomplete="given-name" />
+              <small class="error" data-for="fFirstName"></small>
+            </div>
+            <div class="field">
+              <label for="fLastName">Nom <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" id="fLastName" name="lastName" type="text" required maxlength="40" autocomplete="family-name" />
+              <small class="error" data-for="fLastName"></small>
+            </div>
+            <div class="field">
+              <label for="fUsername">Nom d'utilisateur <span class="req" aria-hidden="true">*</span></label>
+              <input class="input" id="fUsername" name="username" type="text" required maxlength="30" autocomplete="username" spellcheck="false" />
+              <small class="error" data-for="fUsername"></small>
+            </div>
+            <div class="field">
+              <label for="fJob">Poste / activité</label>
+              <input class="input" id="fJob" name="job" type="text" maxlength="60" />
+              <small class="error" data-for="fJob"></small>
+            </div>
+            <div class="field">
+              <label for="fLocation">Localisation</label>
+              <input class="input" id="fLocation" name="location" type="text" maxlength="60" autocomplete="address-level2" />
+              <small class="error" data-for="fLocation"></small>
+            </div>
+            <div class="field">
+              <label for="fEmail">E-mail</label>
+              <input class="input" id="fEmail" name="email" type="email" maxlength="80" autocomplete="email" spellcheck="false" />
+              <small class="error" data-for="fEmail"></small>
+            </div>
+            <div class="field">
+              <label for="fWebsite">Site web</label>
+              <input class="input" id="fWebsite" name="website" type="text" maxlength="120" autocomplete="url" spellcheck="false" placeholder="exemple.com" />
+              <small class="error" data-for="fWebsite"></small>
+            </div>
+            <div class="field">
+              <label for="fGithub">GitHub</label>
+              <input class="input" id="fGithub" name="github" type="text" maxlength="40" spellcheck="false" placeholder="pseudo ou URL github.com/…" />
+              <small class="error" data-for="fGithub"></small>
+            </div>
+            <div class="field field--wide">
+              <div class="field-head">
+                <label for="fBio">Biographie</label>
+                <span class="counter" id="bioCount">0 / 300</span>
+              </div>
+              <textarea class="input" id="fBio" name="bio" maxlength="300" rows="3"></textarea>
+              <small class="error" data-for="fBio"></small>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn--primary">Enregistrer</button>
+            <button type="button" class="btn" id="cancelBtn">Annuler</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--ghost btn--danger" id="resetBtn">Réinitialiser le profil</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <p class="profile-note">💾 Vos modifications restent dans ce navigateur (<code>localStorage</code>) — aucun serveur n'est impliqué.</p>
+  </main>
+
+  <footer class="site-footer">
+    Northev Spark · <a href="index.html">Accueil</a> · thème via le bouton « Thème » en haut à droite
+  </footer>
+</body>
+</html>
