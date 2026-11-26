@@ -13,7 +13,21 @@ import {
 import { hashPassword, inviteCode, sha256, verifyPassword } from '@/lib/auth/crypto';
 import { sessionTtlMs } from '@/lib/auth/config';
 import type { SessionUser } from '@/lib/auth/session';
-import { backfillUser, cloudEnabled, pullCircuits, pullUserByEmail, pushCircuit } from './supabase';
+import {
+  backfillUser,
+  cloudEnabled,
+  deleteRemoteSession,
+  pruneRemoteSessions,
+  pullCircuits,
+  pullRoom,
+  pullRoomsFor,
+  pullSession,
+  pullUserByEmail,
+  pullUserById,
+  pushCircuit,
+  pushRoom,
+  pushSession,
+} from './supabase';
 
 const AVATARS = ['circuit', 'bolt', 'oscillo', 'resistor', 'magnet', 'chip', 'photon', 'wave'];
 
@@ -105,28 +119,58 @@ export async function authenticate(email: string, password: string): Promise<Sto
 export async function createSession(userId: string): Promise<string> {
   const token = sha256(`${userId}:${Date.now()}:${Math.random()}`);
   const now = new Date();
+  const record = {
+    token,
+    userId,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + sessionTtlMs()).toISOString(),
+  };
   await transaction((db) => {
     db.sessions = db.sessions.filter((s) => new Date(s.expiresAt) > now);
-    db.sessions.push({
-      token,
-      userId,
-      createdAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + sessionTtlMs()).toISOString(),
-    });
+    db.sessions.push(record);
   });
+  // Persistée aussi côté Supabase : sur un hébergement serverless, la requête
+  // suivante peut être servie par une autre instance, qui ne verrait pas la
+  // session locale. On n'attend pas la purge des sessions expirées.
+  if (cloudEnabled()) {
+    await pushSession(record).catch(() => undefined);
+    void pruneRemoteSessions().catch(() => undefined);
+  }
   return token;
 }
 
 export async function resolveSession(token: string): Promise<SessionUser | null> {
-  const record = await snapshot((db) => db.sessions.find((s) => s.token === token));
+  let record = await snapshot((db) => db.sessions.find((s) => s.token === token));
+
+  // Session inconnue en local (autre instance serverless) : on la relit.
+  if (!record && cloudEnabled()) {
+    const remote = await pullSession(token);
+    if (!remote) return null;
+    await transaction((db) => {
+      if (!db.sessions.some((s) => s.token === remote.token)) db.sessions.push(remote);
+    });
+    record = remote;
+  }
   if (!record) return null;
   if (new Date(record.expiresAt).getTime() < Date.now()) {
     await transaction((db) => {
       db.sessions = db.sessions.filter((s) => s.token !== token);
     });
+    if (cloudEnabled()) void deleteRemoteSession(token).catch(() => undefined);
     return null;
   }
-  const user = await findUserById(record.userId);
+
+  let user = await findUserById(record.userId);
+  // Compte absent de cette instance : on le récupère depuis Supabase.
+  if (!user && cloudEnabled()) {
+    const remote = await pullUserById(record.userId);
+    if (remote) {
+      await transaction((db) => {
+        if (!db.users.some((u) => u.id === remote.id)) db.users.push(remote);
+      });
+      user = remote;
+    }
+  }
   return user ? publicUser(user) : null;
 }
 
@@ -134,6 +178,7 @@ export async function destroySession(token: string): Promise<void> {
   await transaction((db) => {
     db.sessions = db.sessions.filter((s) => s.token !== token);
   });
+  if (cloudEnabled()) await deleteRemoteSession(token).catch(() => undefined);
 }
 
 export async function updateUser(
@@ -372,13 +417,23 @@ export async function createRoom(input: {
     db.rooms = db.rooms.filter((r) => r.closed || new Date(r.updatedAt).getTime() > Date.now() - 864e5);
     db.rooms.push(room);
   });
+  // partagée : une autre instance serverless doit pouvoir rejoindre ce code
+  if (cloudEnabled()) await pushRoom(room).catch(() => undefined);
   return room;
 }
 
 export async function findRoom(code: string): Promise<StoredRoom | null> {
   if (!/^[1-9][0-9]{4}$/.test(code)) return null;
-  const room = await snapshot((db) => db.rooms.find((r) => r.code === code && !r.closed));
-  return room ?? null;
+  const local = await snapshot((db) => db.rooms.find((r) => r.code === code && !r.closed));
+  if (local) return local;
+  // Atelier ouvert par une autre instance : on le relit et on le garde.
+  if (!cloudEnabled()) return null;
+  const remote = await pullRoom(code);
+  if (!remote) return null;
+  await transaction((db) => {
+    if (!db.rooms.some((r) => r.code === remote.code)) db.rooms.push(remote);
+  });
+  return remote;
 }
 
 /** Marque la présence comme vivante (attribue un slot) */
@@ -472,10 +527,17 @@ export async function touchRoom(
     Object.assign(room, patch, { updatedAt: new Date().toISOString() });
     updated = room;
   });
+  const room = updated as StoredRoom | null;
+  if (room) {
+    // présence et curseurs restent volatils ; le document, la révision et les
+    // messages partent vers Supabase (throttlé par la cadence des événements)
+    void pushRoom(room).catch(() => undefined);
+  }
   return updated;
 }
 
 export async function leaveRoom(code: string, userId: string): Promise<void> {
+  let closed: StoredRoom | null = null;
   await transaction((db) => {
     const room = db.rooms.find((r) => r.code === code);
     if (!room) return;
@@ -486,7 +548,11 @@ export async function leaveRoom(code: string, userId: string): Promise<void> {
       if (!remaining.length) room.closed = true;
       else room.ownerId = remaining[0];
     }
+    closed = room;
   });
+  // la fermeture doit être visible des autres instances
+  const room = closed as StoredRoom | null;
+  if (room && room.closed && cloudEnabled()) await pushRoom(room).catch(() => undefined);
 }
 
 export async function joinRoom(
@@ -520,11 +586,18 @@ export async function joinRoom(
 }
 
 export async function listRoomsFor(userId: string): Promise<StoredRoom[]> {
-  return snapshot((db) =>
-    db.rooms
+  const collect = (rooms: StoredRoom[]) =>
+    rooms
       .filter((r) => !r.closed && (r.ownerId === userId || r.presence[userId]))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-  );
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  const local = collect(await snapshot((db) => db.rooms));
+  if (!cloudEnabled()) return local;
+
+  const remote = collect(await pullRoomsFor(userId));
+  const seen = new Set(local.map((r) => r.code));
+  const merged = [...local, ...remote.filter((r) => !seen.has(r.code))];
+  return merged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /* ------------------------------- projets ------------------------------- */

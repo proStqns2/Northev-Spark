@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { StoredCircuit, StoredUser } from './store';
+import { SessionRecord, StoredCircuit, StoredRoom, StoredUser } from './store';
 
 /**
  * Couche Supabase optionnelle.
@@ -96,6 +96,40 @@ export async function backfillUser(user: StoredUser): Promise<void> {
  * `.data/db.json`) est éphémère sur Vercel. Sans cette lecture, un compte créé
  * avant un redéploiement devient introuvable et la connexion échoue.
  */
+/**
+ * Relit un profil par identifiant.
+ *
+ * Utilisé au rétablissement d'une session servie par une autre instance : le
+ * jeton est valide, mais le compte n'est pas (ou plus) dans la mémoire locale.
+ */
+export async function pullUserById(id: string): Promise<StoredUser | null> {
+  const sb = supabaseAdmin();
+  if (!sb) return null;
+  const result = await withTimeout(
+    sb
+      .from('profiles')
+      .select('id,email,name,avatar,theme,role,password_hash,bio,institution,created_at,last_seen_at')
+      .eq('id', id)
+      .maybeSingle(),
+  );
+  if (!result || result.error || !result.data) return null;
+  const row = result.data as Record<string, string | null>;
+  return {
+    id: row.id as string,
+    email: row.email as string,
+    name: row.name as string,
+    avatar: String(row.avatar ?? 'circuit'),
+    theme: (row.theme as StoredUser['theme']) ?? 'nuit',
+    role: (row.role as StoredUser['role']) ?? 'user',
+    passwordHash: row.password_hash as string,
+    bio: row.bio ?? undefined,
+    institution: row.institution ?? undefined,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    lastSeenAt: String(row.last_seen_at ?? new Date().toISOString()),
+    prefs: { grid: true, animation: true, electronSpeed: 1, digits: 4 },
+  };
+}
+
 export async function pullUserByEmail(email: string): Promise<StoredUser | null> {
   const sb = supabaseAdmin();
   if (!sb) return null;
@@ -231,4 +265,143 @@ export async function publishRoomEvent(payload: {
   if (error && !isMissingTable(error)) {
     console.warn('[supabase] room_events insert:', error.message);
   }
+}
+
+/* ------------------------------------------------------------------ sessions */
+
+/**
+ * Sessions serveur persistées.
+ *
+ * Le disque de `.data/db.json` est propre à chaque instance serverless : sans
+ * cette table, une connexion faite sur une instance serait inconnue de la
+ * suivante. Les jetons sont déjà des hachés (jamais le secret brut).
+ */
+export async function pushSession(record: SessionRecord): Promise<void> {
+  const sb = supabaseAdmin();
+  if (!sb) return;
+  const { error } = await sb.from('sessions').upsert(
+    {
+      token: record.token,
+      user_id: record.userId,
+      created_at: record.createdAt,
+      expires_at: record.expiresAt,
+    },
+    { onConflict: 'token' },
+  );
+  if (error && !isMissingTable(error)) console.warn('[supabase] sessions upsert:', error.message);
+}
+
+export async function pullSession(token: string): Promise<SessionRecord | null> {
+  const sb = supabaseAdmin();
+  if (!sb) return null;
+  const result = await withTimeout(
+    sb.from('sessions').select('token,user_id,created_at,expires_at').eq('token', token).maybeSingle(),
+  );
+  if (!result || result.error || !result.data) return null;
+  const row = result.data as {
+    token: string;
+    user_id: string;
+    created_at: string;
+    expires_at: string;
+  };
+  if (new Date(row.expires_at).getTime() < Date.now()) return null;
+  return {
+    token: row.token,
+    userId: row.user_id,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+export async function deleteRemoteSession(token: string): Promise<void> {
+  const sb = supabaseAdmin();
+  if (!sb) return;
+  const { error } = await sb.from('sessions').delete().eq('token', token);
+  if (error && !isMissingTable(error)) console.warn('[supabase] sessions delete:', error.message);
+}
+
+/** Purge des sessions expirées (appelée à la connexion, sans bloquer). */
+export async function pruneRemoteSessions(): Promise<void> {
+  const sb = supabaseAdmin();
+  if (!sb) return;
+  const { error } = await sb.from('sessions').delete().lt('expires_at', new Date().toISOString());
+  if (error && !isMissingTable(error)) console.warn('[supabase] sessions prune:', error.message);
+}
+
+/* --------------------------------------------------------------------- salles */
+
+/** Copie la salle complète (document, révision, messages) vers Supabase. */
+export async function pushRoom(room: StoredRoom): Promise<void> {
+  const sb = supabaseAdmin();
+  if (!sb) return;
+  const { error } = await sb.from('rooms').upsert(
+    {
+      code: room.code,
+      owner_id: room.ownerId,
+      owner_name: room.ownerName,
+      name: room.name,
+      circuit_id: room.circuitId,
+      project_id: room.projectId ?? null,
+      doc: room.doc,
+      revision: room.revision,
+      presence: room.presence,
+      messages: room.messages,
+      closed: room.closed,
+      created_at: room.createdAt,
+      updated_at: room.updatedAt,
+    },
+    { onConflict: 'code' },
+  );
+  if (error && !isMissingTable(error)) console.warn('[supabase] rooms upsert:', error.message);
+}
+
+/** Relit une salle ouverte (utile quand une autre instance l'a créée). */
+export async function pullRoom(code: string): Promise<StoredRoom | null> {
+  const sb = supabaseAdmin();
+  if (!sb) return null;
+  const result = await withTimeout(
+    sb.from('rooms').select('*').eq('code', code).eq('closed', false).maybeSingle(),
+  );
+  if (!result || result.error || !result.data) return null;
+  const row = result.data as Record<string, unknown>;
+  return {
+    code: String(row.code),
+    ownerId: String(row.owner_id ?? ''),
+    ownerName: String(row.owner_name ?? ''),
+    name: String(row.name ?? 'Atelier'),
+    circuitId: String(row.circuit_id ?? ''),
+    projectId: (row.project_id as string | null) ?? undefined,
+    doc: row.doc,
+    revision: Number(row.revision ?? 1),
+    presence: (row.presence as StoredRoom['presence']) ?? {},
+    messages: (row.messages as StoredRoom['messages']) ?? [],
+    closed: Boolean(row.closed),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+/** Salles ouvertes d'un hôte (reprise après changement d'instance). */
+export async function pullRoomsFor(ownerId: string): Promise<StoredRoom[]> {
+  const sb = supabaseAdmin();
+  if (!sb) return [];
+  const result = await withTimeout(
+    sb.from('rooms').select('*').eq('owner_id', ownerId).eq('closed', false),
+  );
+  if (!result || result.error || !result.data) return [];
+  return (result.data as Array<Record<string, unknown>>).map((row) => ({
+    code: String(row.code),
+    ownerId: String(row.owner_id ?? ''),
+    ownerName: String(row.owner_name ?? ''),
+    name: String(row.name ?? 'Atelier'),
+    circuitId: String(row.circuit_id ?? ''),
+    projectId: (row.project_id as string | null) ?? undefined,
+    doc: row.doc,
+    revision: Number(row.revision ?? 1),
+    presence: (row.presence as StoredRoom['presence']) ?? {},
+    messages: (row.messages as StoredRoom['messages']) ?? [],
+    closed: Boolean(row.closed),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }));
 }

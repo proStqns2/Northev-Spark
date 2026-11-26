@@ -18,9 +18,7 @@ import type { CircuitDoc } from '@/lib/engine/types';
 import type { CursorState, PresenceRecord } from '@/lib/db/store';
 import { cachedEquivalent } from '@/lib/cache';
 import { bodyOf, currentUser, fail, NO_STORE } from '../helpers';
-
-const CURSOR_TTL = 12000;
-const TICK_MS = 110; // ~9 rafraîchissements par seconde
+import { CURSOR_TTL, openRoomStream, TICK_MS } from '../roomStream';
 
 const cursorBodySchema = z.object({
   x: z.number().finite().optional(),
@@ -36,7 +34,12 @@ const cursorBodySchema = z.object({
   idle: z.boolean().optional(),
 });
 
-export async function registerRoomRoutes(app: FastifyInstance) {
+export interface RoomRouteOptions {
+  /** sert le flux SSE (serveur autonome) ; false = flux fourni par l'hôte */
+  sse: boolean;
+}
+
+export async function registerRoomRoutes(app: FastifyInstance, options: RoomRouteOptions = { sse: true }) {
   // ---- liste des ateliers de l'utilisateur
   app.get('/api/rooms', async (request, reply) => {
     const user = await currentUser(request);
@@ -281,7 +284,7 @@ export async function registerRoomRoutes(app: FastifyInstance) {
   });
 
   // ---- flux Server-Sent Events de l'atelier
-  app.get('/api/rooms/:code/events', async (request, reply) => {
+  if (options.sse) app.get('/api/rooms/:code/events', async (request, reply) => {
     const { code } = request.params as { code: string };
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié');
@@ -300,11 +303,6 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     });
 
     let closed = false;
-    let revision = 0;
-    let lastPresenceSignature = '';
-    let lastCursorSignature = '';
-    let lastMessageId = room.messages.at(-1)?.id ?? '';
-
     const send = (event: string, data: unknown) => {
       if (closed) return;
       try {
@@ -314,6 +312,7 @@ export async function registerRoomRoutes(app: FastifyInstance) {
       }
     };
 
+    const stream = openRoomStream(code, user);
     const cleanup = () => {
       if (closed) return;
       closed = true;
@@ -329,63 +328,12 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     const tick = async () => {
       if (closed) return;
       try {
-        const current = await findRoom(code);
-        if (!current) {
-          send('room-closed', { code });
-          cleanup();
-          return;
-        }
-
-        const participants = livePresence(current);
-        const presenceSignature = participants
-          .map((p) => `${p.id}:${p.name}:${p.color}:${p.activity ?? ''}:${p.idle ? 1 : 0}`)
-          .sort()
-          .join('|');
-        if (presenceSignature !== lastPresenceSignature) {
-          lastPresenceSignature = presenceSignature;
-          send('presence', { participants });
-        }
-
-        const now = Date.now();
-        const cursors = participants
-          .filter((p) => p.id !== user.id && p.cursor)
-          .map((p) => {
-            const cursor = p.cursor!;
-            const age = now - (cursor.at ?? now);
-            return {
-              id: p.id,
-              name: p.name,
-              color: p.color,
-              avatar: p.avatar,
-              x: cursor.x,
-              y: cursor.y,
-              hover: cursor.hover ?? null,
-              tool: cursor.tool ?? null,
-              idle: age > CURSOR_TTL || p.idle,
-              fresh: age < 2500,
-            };
-          });
-        const cursorSignature = cursors
-          .map((c) => `${c.id}:${c.x.toFixed(1)}:${c.y.toFixed(1)}:${c.idle ? 1 : 0}:${c.tool ?? ''}`)
-          .join('|');
-        if (cursorSignature !== lastCursorSignature) {
-          lastCursorSignature = cursorSignature;
-          send('cursors', { cursors });
-        }
-
-        if (current.revision !== revision) {
-          revision = current.revision;
-          send('revision', {
-            revision: current.revision,
-            updatedAt: current.updatedAt,
-            author: current.messages.at(-1)?.authorName,
-          });
-        }
-
-        const lastMessage = current.messages.at(-1);
-        if (lastMessage && lastMessage.id !== lastMessageId) {
-          lastMessageId = lastMessage.id;
-          send('chat', { message: lastMessage, messages: current.messages.slice(-40) });
+        for (const event of await stream.poll()) {
+          send(event.event, event.data);
+          if (event.event === 'room-closed') {
+            cleanup();
+            return;
+          }
         }
       } catch {
         /* on retentera au prochain battement */
@@ -405,11 +353,12 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     request.raw.on('close', cleanup);
     res.on('error', cleanup);
 
-    send('ready', {
-      code,
-      user: { id: user.id, name: user.name },
-      presence: livePresence(room) as PresenceRecord[],
-    });
+    const ready = await stream.start();
+    if (!ready) {
+      cleanup();
+      return;
+    }
+    for (const event of ready) send(event.event, event.data);
     void tick();
   });
 }
