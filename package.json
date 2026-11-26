@@ -12,7 +12,9 @@
     "api": "tsx server/api/index.ts",
     "api:watch": "tsx watch server/api/index.ts",
     "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx",
-    "verify": "tsx scripts/verify-engine.ts"
+    "verify": "tsx scripts/verify-engine.ts",
+    "check:ui": "node scripts/errors-check.mjs",
+    "check:clicks": "node scripts/interact-check.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
@@ -40,7 +42,8 @@
     "sharp": "^0.35.5",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "jsdom": "^26.1.0"
   },
   "engines": {
     "node": "22.x"

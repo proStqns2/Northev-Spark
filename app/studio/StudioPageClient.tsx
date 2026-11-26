@@ -12,6 +12,8 @@ interface Props {
   user: { id: string; name: string } | null;
   circuitId?: string;
   templateSlug?: string;
+  /** agent IA qui a construit le montage (tuile cliquée) */
+  agentId?: string;
   templateDocJson: string | null;
   /** vrai quand le montage d'amorçage est proposé (aucun gabarit demandé) */
   seeded?: boolean;
@@ -31,6 +33,7 @@ export function StudioPageClient({
   user,
   circuitId,
   templateSlug,
+  agentId,
   templateDocJson,
   seeded = false,
   templates,
@@ -149,6 +152,7 @@ export function StudioPageClient({
         user={user}
         circuitId={circuitId}
         templateSlug={templateSlug}
+        agentId={agentId}
         projectOptions={projectOptions}
         initialProjectId={initialProjectId}
       />

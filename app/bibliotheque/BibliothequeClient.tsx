@@ -49,9 +49,21 @@ const GLYPH: Record<string, ComponentKind> = {
   labo: 'resistor',
 };
 
-export function BibliothequeClient({ templates }: { templates: Item[] }) {
-  const [query, setQuery] = useState('');
-  const [family, setFamily] = useState<Family | 'all'>('all');
+export function BibliothequeClient({
+  templates,
+  initialQuery = '',
+  initialFamily = 'all',
+}: {
+  templates: Item[];
+  /** recherche passée dans l'URL (`?q=`) — rend les liens profonds utiles */
+  initialQuery?: string;
+  /** famille présélectionnée (`?famille=`) */
+  initialFamily?: string;
+}) {
+  const [query, setQuery] = useState(initialQuery);
+  const [family, setFamily] = useState<Family | 'all'>(
+    (FAMILIES as string[]).includes(initialFamily) ? (initialFamily as Family) : 'all',
+  );
   const [regime, setRegime] = useState<'all' | 'dc' | 'ac'>('all');
   const [difficulty, setDifficulty] = useState<'all' | string>('all');
   const [hovered, setHovered] = useState<string | null>(null);

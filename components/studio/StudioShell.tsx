@@ -39,6 +39,7 @@ import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
 import { useStudio } from '@/hooks/useStudio';
 import { useMultiTabSync } from '@/hooks/useMultiTab';
+import { AGENTS } from '@/lib/ai/agents';
 import { useCircuitEngine } from '@/hooks/useCircuitEngine';
 import { saveWorkspace } from '@/lib/studio/library';
 import {
@@ -65,6 +66,8 @@ interface Props {
   circuitId?: string;
   roomCode?: string;
   templateSlug?: string;
+  /** agent IA qui a construit le montage (bannière + accès à son analyse) */
+  agentId?: string;
   projectOptions?: Array<{ id: string; name: string; color: string }>;
   initialProjectId?: string;
   onDocChange?: (doc: CircuitDoc, commit: boolean) => void;
@@ -89,6 +92,7 @@ export function StudioShell({
   circuitId,
   roomCode,
   templateSlug,
+  agentId,
   projectOptions = [],
   initialProjectId,
   onDocChange,
@@ -105,6 +109,8 @@ export function StudioShell({
   const router = useRouter();
 
   /* -------------------------------------------------- synchronisation multi-onglets */
+  const activeAgent = useMemo(() => AGENTS.find((a) => a.id === agentId) ?? null, [agentId]);
+
   const multiTab = useMultiTabSync({
     doc,
     enabled: true,
@@ -736,6 +742,33 @@ export function StudioShell({
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+
+            {activeAgent ? (
+              <div
+                className="pointer-events-auto absolute left-3 top-3 z-20 flex items-center gap-2 rounded-lg border bg-ink-950/90 px-2.5 py-1.5 backdrop-blur"
+                style={{ borderColor: `${activeAgent.color}66` }}
+              >
+                <span
+                  className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-ink-950"
+                  style={{ background: activeAgent.color }}
+                >
+                  {activeAgent.name.slice(0, 1)}
+                </span>
+                <span className="text-[11px] text-fg-soft">
+                  <strong className="font-semibold" style={{ color: activeAgent.color }}>
+                    {activeAgent.name}
+                  </strong>{' '}
+                  a construit ce montage
+                </span>
+                <Link
+                  href={`/premium?agent=${activeAgent.id}&template=${activeAgent.template}`}
+                  className="rounded border px-1.5 py-0.5 text-[10px] font-medium transition hover:bg-white/5"
+                  style={{ borderColor: `${activeAgent.color}55`, color: activeAgent.color }}
+                >
+                  Analyser
+                </Link>
               </div>
             ) : null}
 

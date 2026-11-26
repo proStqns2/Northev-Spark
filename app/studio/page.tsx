@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 export default async function StudioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ circuit?: string; template?: string }>;
+  searchParams: Promise<{ circuit?: string; template?: string; agent?: string }>;
 }) {
   const params = await searchParams;
   const token = await readSessionToken();
@@ -47,6 +47,7 @@ export default async function StudioPage({
       user={user ? { id: user.id, name: user.name } : null}
       circuitId={params.circuit}
       templateSlug={params.template}
+      agentId={params.agent}
       templateDocJson={initialDoc ? JSON.stringify(initialDoc) : null}
       seeded={seeded}
       projectOptions={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}

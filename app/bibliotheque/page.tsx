@@ -10,7 +10,12 @@ export const metadata: Metadata = {
     'Quinze montages prêts à analyser : diviseur de Thévenin, Norton parallèle, pont de Wheatstone, RLC en alternatif, sources liées, Millman…',
 };
 
-export default function BibliothequePage() {
+export default async function BibliothequePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; famille?: string }>;
+}) {
+  const params = await searchParams;
   const items = TEMPLATES.map((template) => {
     const doc = template.build();
     const eq = cachedEquivalent(doc);
@@ -38,7 +43,7 @@ export default function BibliothequePage() {
     };
   });
 
-  return <BibliothequeClient templates={items} />;
+  return <BibliothequeClient templates={items} initialQuery={params.q ?? ''} initialFamily={params.famille ?? 'all'} />;
 }
 
 function formatOrDash(value: number): string {

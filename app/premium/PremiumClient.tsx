@@ -35,9 +35,13 @@ interface Props {
   circuitDoc: string | null;
   circuitName: string | null;
   providers: { openai: boolean; gemini: boolean; openrouter?: boolean };
+  /** agent pré-sélectionné depuis /agents */
+  initialAgent?: AgentId;
+  /** gabarit à analyser quand aucun montage n'est fourni */
+  templateSlug?: string;
 }
 
-export function PremiumClient({ user, circuitDoc, circuitName, providers }: Props) {
+export function PremiumClient({ user, circuitDoc, circuitName, providers, initialAgent, templateSlug }: Props) {
   const bundledDoc = useMemo<CircuitDoc | null>(() => {
     if (circuitDoc) {
       try {
@@ -67,11 +71,14 @@ export function PremiumClient({ user, circuitDoc, circuitName, providers }: Prop
       setSource('brouillon');
       return;
     }
-    const fallback = TEMPLATES.find((t) => t.slug === 'equivalence-tn') ?? TEMPLATES[0];
+    const fallback =
+      TEMPLATES.find((t) => t.slug === templateSlug) ??
+      TEMPLATES.find((t) => t.slug === 'equivalence-tn') ??
+      TEMPLATES[0];
     setDoc(fallback.build());
     setSource('exemple');
-  }, [bundledDoc]);
-  const [selected, setSelected] = useState<AgentId>('theo');
+  }, [bundledDoc, templateSlug]);
+  const [selected, setSelected] = useState<AgentId>(initialAgent ?? 'theo');
   const [task, setTask] = useState<string>('equivalence');
   const [question, setQuestion] = useState('');
   const [provider, setProvider] = useState<'auto' | 'local' | 'openai' | 'gemini' | 'openrouter'>('auto');

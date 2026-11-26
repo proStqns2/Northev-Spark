@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Cpu, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Cpu, Hammer, Sparkles, Zap } from 'lucide-react';
 import { AGENTS } from '@/lib/ai/agents';
 import { providerStatus } from '@/lib/ai/providers';
 
@@ -87,8 +87,12 @@ export default function AgentsPage() {
                   key={agent.id}
                   className="group relative flex flex-col overflow-hidden rounded-2xl border border-line/60 bg-ink-900/60 transition hover:border-line"
                 >
-                  {/* la tuile du manuel */}
-                  <div className="relative aspect-[4/3] overflow-hidden bg-[#0b1220]">
+                  {/* la tuile du manuel — cliquable : elle construit le montage */}
+                  <Link
+                    href={`/studio?template=${agent.template}&agent=${agent.id}`}
+                    className="relative block aspect-[4/3] overflow-hidden bg-[#0b1220]"
+                    aria-label={`Construire le montage de l’agent ${agent.name}`}
+                  >
                     <Image
                       src={agent.avatar}
                       alt={`Emblème de l’agent ${agent.name} — ${agent.role}`}
@@ -101,7 +105,12 @@ export default function AgentsPage() {
                       className="absolute inset-x-0 bottom-0 h-px"
                       style={{ background: `linear-gradient(90deg, transparent, ${agent.color}, transparent)` }}
                     />
-                  </div>
+                    <span className="absolute inset-0 flex items-center justify-center bg-ink-950/0 opacity-0 transition group-hover:bg-ink-950/45 group-hover:opacity-100">
+                      <span className="chip border-white/30 bg-ink-950/80 text-[10px]">
+                        <Hammer size={11} /> Construire
+                      </span>
+                    </span>
+                  </Link>
 
                   <div className="flex flex-1 flex-col p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -129,11 +138,26 @@ export default function AgentsPage() {
                     </ul>
 
                     <Link
-                      href={`/premium?agent=${agent.id}`}
-                      className="btn btn-sm mt-2.5 w-full border-line/60 text-[10.5px]"
+                      href={`/studio?template=${agent.template}&agent=${agent.id}`}
+                      className="btn btn-sm mt-2.5 w-full justify-center text-[10.5px]"
+                      style={{ borderColor: `${agent.color}66`, color: agent.color }}
                     >
-                      Confier le calcul <ArrowRight size={11} />
+                      <Hammer size={11} /> Construire le montage
                     </Link>
+                    <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                      <Link
+                        href={`/premium?agent=${agent.id}&template=${agent.template}`}
+                        className="btn btn-ghost btn-sm justify-center text-[10px]"
+                      >
+                        Analyser <ArrowRight size={10} />
+                      </Link>
+                      <Link
+                        href={`/studio?template=${agent.template}&agent=${agent.id}`}
+                        className="btn btn-ghost btn-sm justify-center text-[10px]"
+                      >
+                        Studio <ArrowUpRight size={10} />
+                      </Link>
+                    </div>
                   </div>
                 </article>
               );

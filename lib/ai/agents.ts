@@ -41,6 +41,8 @@ export interface AgentDefinition {
   task: string;
   /** agent conversationnel : peut être envoyé à un fournisseur LLM */
   conversational: boolean;
+  /** gabarit construit par l'agent quand on clique sur sa tuile */
+  template: string;
   tasks: AgentTask[];
 }
 
@@ -57,6 +59,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-blue/25 to-spark-cyan/10',
     task: 'equivalence',
     conversational: true,
+    template: 'thevenin-serie',
     tasks: [
       { id: 'equivalence', label: 'Équivalent Thévenin', description: 'Calcul complet + vérification croisée.' },
       { id: 'superposition', label: 'Superposition', description: 'Contribution de chaque source.' },
@@ -75,6 +78,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-cyan/25 to-spark-green/10',
     task: 'equivalence',
     conversational: true,
+    template: 'norton-parallele',
     tasks: [
       { id: 'equivalence', label: 'Équivalent Norton', description: 'I_N, R_N et cohérence avec Thévenin.' },
       { id: 'conversion', label: 'Conversion T ⇄ N', description: 'Passe d’un modèle à l’autre sans perte.' },
@@ -93,6 +97,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-violet/25 to-spark-pink/10',
     task: 'conversion',
     conversational: true,
+    template: 'equivalence-tn',
     tasks: [
       { id: 'conversion', label: 'Conversion T ⇄ N', description: 'Écriture symbolique et numérique des deux modèles.' },
       { id: 'verification', label: 'Vérifier l’équivalence', description: 'Contrôle U_th = I_N · R_th.' },
@@ -110,6 +115,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-blue/25 to-spark-amber/10',
     task: 'equivalence',
     conversational: true,
+    template: 'thevenin-ac-rl',
     tasks: [
       { id: 'equivalence', label: 'Thévenin AC série RL', description: 'Z_th avec partie imaginaire et phase.' },
       { id: 'reduction', label: 'Réduction symbolique', description: 'Série / parallèle pas à pas.' },
@@ -128,6 +134,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-green/25 to-spark-cyan/10',
     task: 'equivalence',
     conversational: true,
+    template: 'norton-ac-rl',
     tasks: [
       { id: 'equivalence', label: 'Norton AC parallèle RL', description: 'I_N complexe et admittance interne.' },
       { id: 'reduction', label: 'Admittances', description: 'Somme des admittances en parallèle.' },
@@ -145,6 +152,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-amber/25 to-spark-coral/10',
     task: 'verification',
     conversational: true,
+    template: 'labo-calcul-tn',
     tasks: [
       { id: 'verification', label: 'Mesures à vide / en court-circuit', description: 'U_th, I_cc, R_th = U_th / I_cc.' },
       { id: 'rapport', label: 'Procès-verbal', description: 'Tableau de mesures prêt pour l’export.' },
@@ -162,6 +170,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-coral/25 to-spark-amber/10',
     task: 'reduction',
     conversational: true,
+    template: 'transformation-sources',
     tasks: [
       { id: 'reduction', label: 'Transformation de sources', description: 'Conversion locale puis réduction globale.' },
       { id: 'superposition', label: 'Sources éteintes', description: 'Le réseau passif donne R_th.' },
@@ -179,6 +188,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-blue/25 to-spark-violet/10',
     task: 'equivalence',
     conversational: true,
+    template: 'hub-equivalence',
     tasks: [
       { id: 'equivalence', label: 'Synthèse complète', description: 'Agrège les vérifications de tous les agents.' },
       { id: 'rapport', label: 'Rapport de validation', description: 'Checklist signée pour l’export.' },
@@ -196,6 +206,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-amber/25 to-spark-cyan/10',
     task: 'pedagogie',
     conversational: true,
+    template: 'dipoles-equivalents',
     tasks: [
       { id: 'pedagogie', label: 'Expliquer le dipôle équivalent', description: 'Caractéristique U(I) et interprétation.' },
       { id: 'verification', label: 'Caractéristique U(I)', description: 'Deux points de mesure suffisent.' },
@@ -213,6 +224,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-green/25 to-spark-cyan/10',
     task: 'verification',
     conversational: true,
+    template: 'bobines-impedances',
     tasks: [
       { id: 'verification', label: 'Audit du montage', description: 'Topologie, cohérence, cas limites.' },
       { id: 'rapport', label: 'Rapport de validation', description: 'Checklist signée pour l’export.' },
@@ -230,6 +242,7 @@ export const AGENTS: AgentDefinition[] = [
     accentClass: 'from-spark-violet/25 to-spark-cyan/10',
     task: 'pedagogie',
     conversational: true,
+    template: 'superposition',
     tasks: [
       { id: 'pedagogie', label: 'Expliquer la méthode', description: 'Pas à pas, niveau lycée / prépa.' },
       { id: 'plan', label: 'Plan de résolution', description: 'Quelle loi utiliser, dans quel ordre.' },
