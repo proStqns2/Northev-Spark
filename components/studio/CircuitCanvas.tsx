@@ -53,6 +53,8 @@ interface Props {
     hover: string | null;
     tool: string;
   }) => void;
+  /** diffusion du curseur aux autres onglets (BroadcastChannel) */
+  onTabCursor?: (x: number, y: number) => void;
   showPresencePills?: boolean;
   /** valeur à appliquer au prochain dipôle posé (saisie dans le panneau Valeurs) */
   nextValue?: number;
@@ -76,6 +78,7 @@ export function CircuitCanvas({
   participants = [],
   localId = '',
   onCursorMove,
+  onTabCursor,
   showPresencePills = false,
   nextValue,
 }: Props) {
@@ -435,10 +438,17 @@ export function CircuitCanvas({
     [],
   );
 
+  const lastTabCursor = useRef(0);
   const publishPointer = useCallback(
     (event: React.PointerEvent<SVGSVGElement>, over?: string | null) => {
-      if (!onCursorMove) return;
       const local = toSvg(event);
+      const now = Date.now();
+      // diffusion multi-onglets (~10 Hz) — indépendante du canal serveur
+      if (onTabCursor && now - lastTabCursor.current > 100) {
+        lastTabCursor.current = now;
+        onTabCursor(local.x / GRID, local.y / GRID);
+      }
+      if (!onCursorMove) return;
       const vx = view.x / GRID;
       const vy = view.y / GRID;
       const vw = view.w / GRID;
@@ -454,7 +464,7 @@ export function CircuitCanvas({
         tool: tool.mode,
       });
     },
-    [onCursorMove, toSvg, view, tool.mode],
+    [onCursorMove, onTabCursor, toSvg, view, tool.mode],
   );
 
   const handlePointerMoveWithPresence = (event: React.PointerEvent<SVGSVGElement>) => {

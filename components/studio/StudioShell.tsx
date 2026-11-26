@@ -38,6 +38,7 @@ import { GeminiHelp } from './GeminiHelp';
 import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
 import { useStudio } from '@/hooks/useStudio';
+import { useMultiTabSync } from '@/hooks/useMultiTab';
 import { useCircuitEngine } from '@/hooks/useCircuitEngine';
 import { saveWorkspace } from '@/lib/studio/library';
 import {
@@ -102,6 +103,14 @@ export function StudioShell({
   const { equivalent, solution } = useCircuitEngine(doc);
   const { success, error, info } = useToast();
   const router = useRouter();
+
+  /* -------------------------------------------------- synchronisation multi-onglets */
+  const multiTab = useMultiTabSync({
+    doc,
+    enabled: true,
+    userName: user?.name ?? 'Utilisateur',
+    onRemoteDoc: (remote) => setDoc(remote, { commit: false }),
+  });
 
   const [tool, setTool] = useState<Tool>({ mode: 'select' });
   const [showFlow, setShowFlow] = useState(true);
@@ -312,6 +321,8 @@ export function StudioShell({
       if (event.key.toLowerCase() === 'm' && !meta) setTool({ mode: 'ground' });
       if (event.key === 'v' && !meta) setTool({ mode: 'select' });
       if (event.key === 'e' && !meta) setTool({ mode: 'erase' });
+      if (event.key.toLowerCase() === 'r' && !meta) studio.rotateSelected();
+      if (event.key.toLowerCase() === 'f' && !meta) studio.flipSelected();
       if (event.key === 'Enter' && tool.mode !== 'select') setTool({ mode: 'select' });
     };
     window.addEventListener('keydown', onKey);
@@ -661,10 +672,22 @@ export function StudioShell({
               showFlow={showFlow}
               flowSpeed={flowSpeed}
               showGrid={showGrid}
-              collaborators={collaboration?.cursors ?? []}
+              collaborators={[
+                ...(collaboration?.cursors ?? []),
+                ...multiTab.remoteCursors.map((c) => ({
+                  id: c.sender,
+                  name: c.name,
+                  color: c.color,
+                  x: c.x,
+                  y: c.y,
+                  idle: false,
+                  fresh: true,
+                })),
+              ]}
               participants={collaboration?.participants ?? onlineCollaborators.map((p) => ({ ...p, idle: false }))}
               localId={user?.id ?? ''}
               onCursorMove={collaboration ? onCursorMove : undefined}
+              onTabCursor={multiTab.publishCursor}
               showPresencePills={Boolean(collaboration)}
             />
             {!writeEnabled ? (
