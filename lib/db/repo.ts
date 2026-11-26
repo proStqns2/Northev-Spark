@@ -130,6 +130,39 @@ export async function updateUser(
   return updated ? publicUser(updated) : null;
 }
 
+/** enregistre une clé API chiffrée pour l'utilisateur */
+export async function setUserKey(
+  id: string,
+  provider: 'gemini' | 'openai',
+  entry: { sealed: string; fingerprint: string } | null,
+): Promise<boolean> {
+  let ok = false;
+  await transaction((db) => {
+    const user = db.users.find((u) => u.id === id);
+    if (!user) return;
+    user.keys = user.keys ?? {};
+    if (entry === null) delete user.keys[provider];
+    else user.keys[provider] = { ...entry, updatedAt: new Date().toISOString() };
+    ok = true;
+  });
+  return ok;
+}
+
+/** lit les métadonnées de clés (empreinte seulement) */
+export async function userKeyInfo(id: string) {
+  const user = await findUserById(id);
+  return {
+    gemini: user?.keys?.gemini ? { fingerprint: user.keys.gemini.fingerprint, updatedAt: user.keys.gemini.updatedAt } : null,
+    openai: user?.keys?.openai ? { fingerprint: user.keys.openai.fingerprint, updatedAt: user.keys.openai.updatedAt } : null,
+  };
+}
+
+/** récupère la clé chiffrée brute (usage serveur uniquement) */
+export async function userSealedKey(id: string, provider: 'gemini' | 'openai'): Promise<string | undefined> {
+  const user = await findUserById(id);
+  return provider === 'gemini' ? user?.keys?.gemini?.sealed : user?.keys?.openai?.sealed;
+}
+
 export async function changePassword(
   id: string,
   oldPassword: string,

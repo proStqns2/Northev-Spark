@@ -94,6 +94,25 @@ Exécutez [`supabase/schema.sql`](supabase/schema.sql) dans l'éditeur SQL du pr
 Les tables `profiles`, `circuits`, `rooms` et `room_events` sont créées avec index, triggers `updated_at` et RLS activée.
 Le serveur utilise la clé `service_role` : elle ne quitte jamais le backend. La synchronisation est déclenchée depuis `/compte` (bouton **Synchroniser**) et à chaque sauvegarde.
 
+### Assistant Gemini (bouton dans le studio)
+
+Le studio expose un bouton **Gemini** qui ouvre deux outils :
+
+| Outil | Ce qu'il fait |
+|---|---|
+| **Schéma équivalent** | Gemini propose un montage Thévenin/Norton en JSON ; le serveur valide la structure (zod, types autorisés), le **recalcule** avec le solveur, puis mesure l'écart sur U_th et I_N (8 % max en DC). Au-delà, la proposition est affichée mais **non certifiée**. |
+| **Rééquilibrer** | 10 contrôles déterministes (aucun appel IA) : bornes, masse, valeurs nulles, source court-circuitée, source de courant ouverte, fréquence AC, doublons… Chaque correction est expliquée. |
+
+**Sécurité de la clé** — la clé n'est jamais dans le bundle client :
+
+- `GEMINI_API_KEY` est lue dans le route handler Node (`/api/ai/schema`), jamais préfixée `NEXT_PUBLIC_` ;
+- l'API ne renvoie que `{configured, model, source}` ; les erreurs sont expurgées (`key=***`) ;
+- chaque utilisateur peut enregistrer **sa propre clé** depuis `Compte → Clés IA` : elle est
+  chiffrée en AES-256-GCM (`SECRET_KEY`) et seule une empreinte du type `AQ.A…yl8A` est réaffichée ;
+- priorité d'usage : clé personnelle → clé serveur → message d'aide.
+
+Routes : `GET|POST /api/ai/schema`, `POST /api/ai/balance`, `GET|POST|DELETE /api/profile/keys`.
+
 ### Agents IA
 
 Les cinq agents **calculent réellement** : ils consomment le solveur nodal et la réduction symbolique, puis rédigent l'explication.

@@ -30,6 +30,7 @@ import { abs } from '@/lib/engine/complex';
 import { CircuitCanvas, Tool } from './CircuitCanvas';
 import { Palette } from './Palette';
 import { BuildBox } from './BuildBox';
+import { GeminiHelp } from './GeminiHelp';
 import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
 import { useStudio } from '@/hooks/useStudio';
@@ -107,7 +108,26 @@ export function StudioShell({
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'palette' | 'results'>('none');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [geminiOpen, setGeminiOpen] = useState(false);
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /* ------------------------------------------- assistant Gemini (statut) */
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/ai/schema', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((payload: { configured?: boolean; model?: string }) => {
+        if (!alive) return;
+        setGeminiConfigured(Boolean(payload.configured));
+        if (payload.model) setGeminiModel(payload.model);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* --------------------------------------------------- import d'un montage */
   const uploadCircuit = useCallback(
@@ -364,6 +384,27 @@ export function StudioShell({
             active={split}
           />
           <span className="mx-1 h-5 w-px bg-line/60" />
+          <button
+            type="button"
+            onClick={() => setGeminiOpen(true)}
+            className={cn(
+              'btn btn-sm gap-1.5',
+              geminiConfigured
+                ? 'border-spark-violet/50 bg-spark-violet/10 text-spark-violet'
+                : 'border-line/60 text-fg-soft',
+            )}
+            title={
+              geminiConfigured
+                ? `Assistant Gemini (${geminiModel}) : schéma équivalent et rééquilibrage`
+                : 'Assistant Gemini — clé à configurer côté serveur'
+            }
+          >
+            <Sparkles size={13} />
+            <span className="hidden xl:inline">Gemini</span>
+            {geminiConfigured ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-spark-green shadow-[0_0_6px] shadow-spark-green" />
+            ) : null}
+          </button>
           {user ? (
             <div className="flex items-center gap-1 rounded-md border border-line/50 pl-1.5">
               <FolderOpen size={12} className="text-fg-mute" />
@@ -688,6 +729,20 @@ export function StudioShell({
           <Download size={13} /> Gabarits
         </Link>
       </div>
+
+      {geminiOpen ? (
+        <GeminiHelp
+          doc={doc}
+          configured={geminiConfigured}
+          model={geminiModel}
+          onClose={() => setGeminiOpen(false)}
+          onApply={(next, label) => {
+            setDoc(next);
+            studio.markSaved();
+            success(label, 'Le montage a été remplacé dans le studio.');
+          }}
+        />
+      ) : null}
 
       {mobilePanel !== 'none' ? (
         <div className="fixed inset-x-0 bottom-0 z-40 h-[65vh] rounded-t-2xl border-t border-line/70 bg-ink-950/98 backdrop-blur-xl lg:hidden">

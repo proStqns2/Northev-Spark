@@ -46,13 +46,13 @@ export function StudioPageClient({
     return emptyDoc();
   });
   const [restored, setRestored] = useState(false);
-  const [ready, setReady] = useState(Boolean(templateDocJson));
+  // rendu serveur immédiat : la restauration du brouillon se fait juste après
+  const [ready, setReady] = useState(true);
 
   // Restauration du brouillon local uniquement hors gabarit explicite.
   useEffect(() => {
     if (templateDocJson) {
       clearWorkspace();
-      setReady(true);
       return;
     }
     const workspace = loadWorkspace();
@@ -60,7 +60,6 @@ export function StudioPageClient({
       setDoc(workspace);
       setRestored(true);
     }
-    setReady(true);
   }, [templateDocJson]);
 
   return (

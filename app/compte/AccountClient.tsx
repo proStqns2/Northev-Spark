@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -29,6 +29,7 @@ import {
   Trash2,
   UserRound,
   Users,
+  Bot,
 } from 'lucide-react';
 import { Avatar, AvatarPicker } from '@/components/ui/Avatar';
 import { ThemeSwitcher } from '@/components/ui/ThemeSwitcher';
@@ -370,7 +371,179 @@ const TABS = [
   { id: 'profil', label: 'Profil', icon: UserRound },
   { id: 'apparence', label: 'Apparence', icon: Palette },
   { id: 'securite', label: 'Sécurité', icon: ShieldCheck },
+  { id: 'cles', label: 'Clés IA', icon: KeyRound },
 ] as const;
+
+
+/* ============================================================== CLÉS API */
+/**
+ * Gestion des clés IA personnelles.
+ * La clé saisie ici part en HTTPS vers le serveur, qui la chiffre
+ * (AES-256-GCM) : elle n'est jamais renvoyée au navigateur, seule son
+ * empreinte (« AQ.A…yl8A ») est réaffichée.
+ */
+function ApiKeysPanel() {
+  const [info, setInfo] = useState<{
+    vault: boolean;
+    serverGemini: boolean;
+    keys: { gemini: { fingerprint: string; updatedAt: string } | null; openai: { fingerprint: string; updatedAt: string } | null };
+  } | null>(null);
+  const [drafts, setDrafts] = useState({ gemini: '', openai: '' });
+  const [busy, setBusy] = useState<'gemini' | 'openai' | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const { success, error } = useToast();
+
+  const load = useCallback(async () => {
+    const response = await fetch('/api/profile/keys', { cache: 'no-store' });
+    if (response.ok) setInfo(await response.json());
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function save(provider: 'gemini' | 'openai') {
+    const key = drafts[provider].trim();
+    if (!key) return;
+    setBusy(provider);
+    setFeedback(null);
+    try {
+      const response = await fetch('/api/profile/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, key }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? 'Enregistrement impossible.');
+      setDrafts((d) => ({ ...d, [provider]: '' }));
+      setFeedback({ tone: 'ok', text: `Clé ${provider} chiffrée et enregistrée (${payload.fingerprint}).` });
+      success('Clé enregistrée', 'Elle est chiffrée côté serveur et ne sera plus affichée en clair.');
+      await load();
+    } catch (e) {
+      setFeedback({ tone: 'bad', text: (e as Error).message });
+      error('Clé refusée', (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove(provider: 'gemini' | 'openai') {
+    const response = await fetch(`/api/profile/keys?provider=${provider}`, { method: 'DELETE' });
+    if (response.ok) {
+      success('Clé supprimée', 'Le serveur reprend sa clé par défaut si elle existe.');
+      await load();
+    }
+  }
+
+  return (
+    <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_300px]">
+      <section className="panel p-4">
+        <h2 className="flex items-center gap-1.5 text-[13px] font-semibold">
+          <Sparkles size={14} className="text-spark-violet" /> Clés IA personnelles
+        </h2>
+        <p className="mt-1 text-[11.5px] leading-relaxed text-fg-mute">
+          Votre clé permet au bouton <strong className="text-fg-soft">Gemini</strong> du studio de générer des schémas
+          équivalents avec votre propre quota. Elle est chiffrée en AES-256-GCM et n’est jamais renvoyée au navigateur.
+        </p>
+
+        {info && !info.vault ? (
+          <p className="mt-2 rounded-lg border border-spark-amber/40 bg-spark-amber/[0.07] p-2 text-[10.5px] text-spark-amber">
+            Coffre désactivé : définissez <code className="rounded bg-ink-850 px-1">SECRET_KEY</code> (≥ 16 caractères)
+            dans les variables du serveur pour activer l’enregistrement chiffré.
+          </p>
+        ) : null}
+
+        {(['gemini', 'openai'] as const).map((provider) => {
+          const current = info?.keys?.[provider] ?? null;
+          return (
+            <div key={provider} className="mt-3 rounded-xl border border-line/50 bg-ink-850/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[12px] font-medium capitalize">
+                  {provider === 'gemini' ? <Sparkles size={12} className="text-spark-violet" /> : <Bot size={12} className="text-spark-green" />}
+                  {provider}
+                </p>
+                {current ? (
+                  <span className="chip border-spark-green/40 bg-spark-green/10 font-mono text-[10px] text-spark-green">
+                    {current.fingerprint}
+                  </span>
+                ) : (
+                  <span className="chip text-[10px]">
+                    {provider === 'gemini' && info?.serverGemini ? 'clé serveur active' : 'non configurée'}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <input
+                  type="password"
+                  value={drafts[provider]}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [provider]: e.target.value }))}
+                  placeholder={provider === 'gemini' ? 'AIza… ou AQ.…' : 'sk-…'}
+                  className="field min-w-[180px] flex-1 font-mono text-[11px]"
+                  autoComplete="off"
+                  spellCheck={false}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void save(provider);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => save(provider)}
+                  disabled={busy === provider || !drafts[provider].trim()}
+                  className="btn btn-primary btn-sm"
+                >
+                  {busy === provider ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />}
+                  Enregistrer
+                </button>
+                {current ? (
+                  <button type="button" onClick={() => remove(provider)} className="btn btn-sm border-spark-coral/40 text-spark-coral">
+                    Supprimer
+                  </button>
+                ) : null}
+              </div>
+
+              {current ? (
+                <p className="mt-1.5 text-[10px] text-fg-mute">
+                  Enregistrée le {new Date(current.updatedAt).toLocaleString('fr-FR')}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {feedback ? (
+          <p
+            className={cn(
+              'mt-2.5 rounded-lg border p-2 text-[10.5px]',
+              feedback.tone === 'ok'
+                ? 'border-spark-green/40 bg-spark-green/[0.07] text-spark-green'
+                : 'border-spark-coral/40 bg-spark-coral/[0.07] text-spark-coral',
+            )}
+          >
+            {feedback.text}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="panel p-4">
+        <h2 className="text-[13px] font-semibold">Ce qu’il faut savoir</h2>
+        <ul className="mt-2 space-y-1.5 text-[10.5px] leading-relaxed text-fg-soft">
+          <li>• La clé circule une seule fois, en HTTPS, vers le route handler Node.</li>
+          <li>• Elle est stockée chiffrée ; seule une empreinte est affichée.</li>
+          <li>• Sans clé personnelle, le serveur utilise sa propre clé si elle existe.</li>
+          <li>• Toute proposition de schéma est recalculée par le solveur avant acceptation.</li>
+          <li>• Une clé exposée doit être révoquée dans Google AI Studio.</li>
+        </ul>
+        <div className="mt-2.5 rounded-lg border border-line/40 bg-ink-950/50 p-2.5">
+          <p className="text-[10px] leading-relaxed text-fg-mute">
+            Rappel : ne collez jamais une clé dans un champ public, un dépôt git ou un message. Si c’est arrivé,
+            révoquez-la et générez-en une nouvelle.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 function ProfileView({
   user,
@@ -735,6 +908,8 @@ function ProfileView({
           </section>
         </div>
       ) : null}
+
+      {tab === 'cles' ? <ApiKeysPanel /> : null}
 
       {tab === 'securite' ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-2">

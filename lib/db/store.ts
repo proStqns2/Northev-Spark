@@ -22,6 +22,11 @@ export interface StoredUser {
   lastSeenAt: string;
   bio?: string;
   institution?: string;
+  /** clés API personnelles, chiffrées (jamais renvoyées en clair) */
+  keys?: {
+    gemini?: { sealed: string; fingerprint: string; updatedAt: string };
+    openai?: { sealed: string; fingerprint: string; updatedAt: string };
+  };
   prefs: {
     grid?: boolean;
     animation?: boolean;
