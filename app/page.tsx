@@ -81,7 +81,7 @@ export default function HomePage() {
               <Link href="/bibliotheque" className="btn">
                 <Layers size={16} /> Explorer les {TEMPLATES.length} montages
               </Link>
-              <Link href="/premium" className="btn btn-ghost text-spark-violet">
+              <Link href="/agents" className="btn btn-ghost text-spark-violet">
                 <Sparkles size={16} /> Agents IA <ArrowRight size={14} />
               </Link>
             </div>
@@ -269,8 +269,8 @@ export default function HomePage() {
             },
             {
               icon: Cpu,
-              title: '5 agents IA spécialisés',
-              body: 'Théo (Thévenin), Nora (Norton), Impeda (AC), Volt (audit), Mentor (méthode). Moteur local inclus, GPT / Gemini en option.',
+              title: '11 agents exécutables',
+              body: 'Théo, Nora, Équivalence, Impéda, Bobines, Sources, Labo, Hub, Dipôles, Volt, Mentor. Chacun calcule sur le serveur, sans clé d’API.',
               accent: 'text-spark-green',
             },
             {

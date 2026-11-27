@@ -195,7 +195,7 @@ export default function SymbolesPage() {
                       className="rounded bg-spark-amber/10 px-1 py-0.5 font-mono text-[8.5px] text-spark-amber"
                       title={SYMBOLS[kind].polarity!.solver}
                     >
-                      + en {SYMBOLS[kind].polarity!.plus.toUpperCase()}
+                      {SYMBOLS[kind].pins[0].role === 'plus' ? '+ en A' : 'récepteur A→B'}
                     </span>
                   ) : null}
                   {SYMBOLS[kind].states ? (
