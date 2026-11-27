@@ -56,6 +56,7 @@ export default async function StudioPage({
       seeded={seeded}
       projectOptions={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
       initialProjectId={projectId}
+      aiEnabled={Boolean(process.env.AI_ASSISTANT_ENABLED === 'on' || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)}
       templates={TEMPLATES.map((t) => ({
         slug: t.slug,
         title: t.title,

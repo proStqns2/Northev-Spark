@@ -1,4 +1,5 @@
 import type { ApiRoute } from '../http';
+import { aiStatusForId } from '@/lib/ai/gate';
 
 import { authenticate, createSession, createUser, destroySession } from '@/lib/db/repo';
 import { cloudEnabled } from '@/lib/db/supabase';
@@ -65,6 +66,26 @@ export const authRoutes: ApiRoute[] = [
     const user = await currentUser(request);
     reply.header('Cache-Control', 'no-store');
     return reply.send({ user, cloud: cloudEnabled() });
-  }]
-];
+  }],
 
+  [
+    'GET',
+    '/api/auth/status',
+    async (_request, reply) => {
+      const assistant = aiStatusForId(null);
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({
+        auth: 'ok',
+        requiresAi: false,
+        features: {
+          studio: true,
+          academy: true,
+          lab: true,
+          exercises: true,
+          assistant: (await assistant).ready || (await assistant).enabled,
+        },
+        note: 'Le compte et le studio fonctionnent sans clé ni service IA.',
+      });
+    },
+  ],
+];

@@ -32,6 +32,8 @@ export interface StoredUser {
     animation?: boolean;
     electronSpeed?: number;
     digits?: number;
+    /** consentement explicite à l’usage de l’assistant IA */
+    ai?: boolean;
   };
 }
 

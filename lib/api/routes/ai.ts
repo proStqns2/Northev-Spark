@@ -10,6 +10,8 @@ import { AGENTS } from '@/lib/ai/agents';
 import { generateEquivalentSchema, geminiStatus } from '@/lib/ai/gemini';
 import { rebalanceDoc } from '@/lib/engine/rebalance';
 import { bodyOf, currentUser, fail } from '../helpers';
+import { aiStatusForId, gateAi, gateMessage } from '@/lib/ai/gate';
+import { updateUser } from '@/lib/db/repo';
 
 /**
  * Déchiffre les clés du coffre de l'utilisateur.
@@ -44,6 +46,30 @@ const schemaBodySchema = z.object({
 });
 
 export const aiRoutes: ApiRoute[] = [
+  [
+    'GET',
+    '/api/ai/status',
+    async (request, reply) => {
+      const user = await currentUser(request);
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({ assistant: await aiStatusForId(user?.id ?? null) });
+    },
+  ],
+
+  [
+    'POST',
+    '/api/ai/consent',
+    async (request, reply) => {
+      const user = await currentUser(request);
+      if (!user) return fail(reply, 401, 'Connectez-vous pour régler l’assistant.');
+      const body = bodyOf<{ enabled?: unknown }>(request);
+      if (typeof body.enabled !== 'boolean') return fail(reply, 422, 'Champ « enabled » attendu (booléen).');
+      await updateUser(user.id, { prefs: { ai: body.enabled } });
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({ assistant: await aiStatusForId(user.id) });
+    },
+  ],
+
 ['GET', '/api/ai', async (_request, reply) => {
     return reply.send({
       agents: AGENTS,
@@ -59,6 +85,10 @@ export const aiRoutes: ApiRoute[] = [
     const user = await currentUser(request);
     if (!user) {
       return fail(reply, 401, 'Le hub d’agents IA est réservé aux comptes connectés.');
+    }
+    const gate = await gateAi(user.id);
+    if (!gate.ok) {
+      return fail(reply, 403, gateMessage(gate.status), { code: 'AI_OFF', assistant: gate.status, href: '/assistant' });
     }
     const parsed = aiSchema.safeParse(bodyOf(request));
     if (!parsed.success) {
@@ -110,6 +140,10 @@ export const aiRoutes: ApiRoute[] = [
     const user = await currentUser(request);
     if (!user) {
       return fail(reply, 401, 'Connectez-vous pour utiliser l’assistant Gemini.');
+    }
+    const gate = await gateAi(user.id);
+    if (!gate.ok) {
+      return fail(reply, 403, gateMessage(gate.status), { code: 'AI_OFF', assistant: gate.status, href: '/assistant' });
     }
     const parsed = schemaBodySchema.safeParse(bodyOf(request));
     if (!parsed.success) {

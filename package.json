@@ -9,11 +9,14 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx lib/api/hardening.test.ts",
+    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx lib/api/hardening.test.ts lib/studio/editor.test.ts",
     "verify": "tsx scripts/verify-engine.ts",
     "check:ui": "node scripts/errors-check.mjs",
     "check:clicks": "node scripts/interact-check.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "check:studio": "node scripts/studio-check.mjs",
+    "analytics:demo": "python3 analytics/spark_academy.py --input analytics/data/demo.jsonl --sample",
+    "mongo:dry": "node scripts/mongo-migrate.mjs --dry-run"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
