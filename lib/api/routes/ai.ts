@@ -11,6 +11,7 @@ import { generateEquivalentSchema, geminiStatus } from '@/lib/ai/gemini';
 import { rebalanceDoc } from '@/lib/engine/rebalance';
 import { bodyOf, currentUser, fail } from '../helpers';
 import { aiStatusForId, gateAi, gateMessage } from '@/lib/ai/gate';
+import { BUILD_EXAMPLES, buildFromPrompt, templateCatalogue } from '@/lib/ai/build';
 import { updateUser } from '@/lib/db/repo';
 
 /**
@@ -174,6 +175,59 @@ export const aiRoutes: ApiRoute[] = [
     );
     reply.header('Cache-Control', 'no-store');
     return reply.code(result.error ? 502 : 200).send(result);
-  }]
-];
+  }],
 
+  [
+    'GET',
+    '/api/ai/build/examples',
+    async (_request, reply) => {
+      reply.header('Cache-Control', 'public, max-age=3600');
+      return reply.send({ examples: BUILD_EXAMPLES, templates: templateCatalogue() });
+    },
+  ],
+
+  [
+    'POST',
+    '/api/ai/build',
+    async (request, reply) => {
+      const user = await currentUser(request);
+      if (!user) return fail(reply, 401, 'Connectez-vous pour décrire un montage.');
+      const gate = await gateAi(user.id);
+
+      const body = bodyOf<{ prompt?: unknown; values?: unknown; provider?: unknown }>(request);
+      const prompt = typeof body.prompt === 'string' ? body.prompt.slice(0, 600) : '';
+      if (prompt.trim().length < 6) return fail(reply, 422, 'Décrivez le montage en quelques mots.');
+
+      const values =
+        body.values && typeof body.values === 'object' && !Array.isArray(body.values)
+          ? Object.fromEntries(
+              Object.entries(body.values as Record<string, unknown>)
+                .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+                .slice(0, 12),
+            ) as Record<string, number>
+          : {};
+
+      const provider =
+        body.provider === 'openai' || body.provider === 'gemini' || body.provider === 'openrouter'
+          ? body.provider
+          : 'auto';
+
+      const personalKeys = gate.ok ? await personalKeysOf(user.id) : {};
+      const result = await buildFromPrompt({
+        prompt,
+        values,
+        provider,
+        personalKeys,
+        allowModel: gate.ok,
+      });
+
+      reply.header('Cache-Control', 'no-store');
+      if (!result.ok) return reply.code(422).send(result);
+      return reply.send({
+        ...result,
+        // on ne renvoie jamais les clés, même tronquées
+        assistant: gate.status,
+      });
+    },
+  ],
+];

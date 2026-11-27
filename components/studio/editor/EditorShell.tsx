@@ -60,6 +60,8 @@ import { cn } from '@/lib/utils';
 import { EditorCanvas } from './EditorCanvas';
 import { PartPalette } from './PartPalette';
 import { PartInspector } from './PartInspector';
+import { QuickBar } from './QuickBar';
+import { BuildPanel } from './BuildPanel';
 
 /**
  * Coquille de l'atelier.
@@ -108,6 +110,10 @@ export function EditorShell({
   const [showHelp, setShowHelp] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  /** onglets de l'interface mobile : chacune des zones reste atteignable */
+  const [mobileTab, setMobileTab] = useState<'plan' | 'pieces' | 'reglages' | 'resultats'>('plan');
+  /** colonne de droite : réglages ou fabrication assistée */
+  const [deskTab, setDeskTab] = useState<'reglages' | 'decrire'>('reglages');
   const noticeId = useRef(0);
 
   const { equivalent, solution } = useCircuitEngine(editor.doc);
@@ -215,6 +221,17 @@ export function EditorShell({
       apply((current) => updatePart(current, id, patch, label));
     },
     [apply],
+  );
+
+  const applyBuiltDoc = useCallback(
+    (doc: CircuitDoc, message: string) => {
+      setEditor((current) => replaceDoc(current, doc, 'Montage construit'));
+      setTab('resultats');
+      setPanelOpen(true);
+      setMobileTab('plan');
+      notify(message, 'ok');
+    },
+    [notify],
   );
 
   const solve = useCallback(() => {
@@ -341,10 +358,10 @@ export function EditorShell({
   const warningCount = issues.filter((issue) => issue.level === 'warning').length;
 
   return (
-    <div className="flex min-h-[calc(100vh-56px)] flex-col bg-ink-950">
+    <div className="flex min-h-[100dvh] flex-col bg-ink-950">
       {/* barre d'outils */}
-      <header className="flex flex-wrap items-center gap-1.5 border-b border-line/60 bg-ink-950/95 px-3 py-2">
-        <div className="flex items-center gap-1">
+      <header className="flex flex-wrap items-center gap-1 border-b border-line/60 bg-ink-950/95 px-2 py-1.5 sm:gap-1.5 sm:px-3 sm:py-2">
+        <div className="flex items-center gap-0.5">
           <IconAction label="Annuler (Ctrl+Z)" disabled={!canUndo(editor)} onClick={() => apply(undo)}>
             <Undo2 size={15} />
           </IconAction>
@@ -353,44 +370,42 @@ export function EditorShell({
           </IconAction>
         </div>
 
-        <div className="mx-1 h-5 w-px bg-line/60" />
+        <div className="mx-0.5 hidden h-5 w-px bg-line/60 sm:block" />
 
-        <div className="flex items-center gap-1">
-          <ToolButton active={editor.tool.mode === 'select'} onClick={() => apply((s) => setTool(s, { mode: 'select' }))}>
+        <div className="hidden items-center gap-1 sm:flex">
+          <ToolButton active={editor.tool.mode === 'select'} onClick={() => apply((state) => setTool(state, { mode: 'select' }))}>
             Sélection
           </ToolButton>
-          <ToolButton active={editor.tool.mode === 'wire'} onClick={() => apply((s) => setTool(s, { mode: 'wire' }))}>
+          <ToolButton active={editor.tool.mode === 'wire'} onClick={() => apply((state) => setTool(state, { mode: 'wire' }))}>
             Fil
           </ToolButton>
-          <ToolButton active={editor.tool.mode === 'erase'} onClick={() => apply((s) => setTool(s, { mode: 'erase' }))}>
+          <ToolButton active={editor.tool.mode === 'erase'} onClick={() => apply((state) => setTool(state, { mode: 'erase' }))}>
             Gomme
           </ToolButton>
         </div>
 
-        <div className="mx-1 h-5 w-px bg-line/60" />
-
-        <button type="button" onClick={solve} className="btn btn-primary btn-sm">
-          <Calculator size={13} /> Calculer
-          <kbd className="ml-1 rounded border border-white/25 px-1 text-[9px]">↵</kbd>
+        <button type="button" onClick={solve} className="btn btn-primary btn-sm ml-auto sm:ml-0">
+          <Calculator size={13} />
+          <span className="hidden sm:inline">Calculer</span>
         </button>
         <button type="button" onClick={() => void save()} disabled={saving} className="btn btn-sm border-line/60">
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-          {user ? 'Enregistrer' : 'Sauver ici'}
-        </button>
-        <button type="button" onClick={exportJson} className="btn btn-sm border-line/60">
-          <Download size={13} /> JSON
-        </button>
-        <button type="button" onClick={() => void copyLink()} className="btn btn-sm border-line/60">
-          <Link2 size={13} />
+          <span className="hidden sm:inline">{user ? 'Enregistrer' : 'Sauver ici'}</span>
         </button>
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="hidden items-center gap-1 text-[10px] text-fg-mute sm:flex">
+        <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
+          <span className="hidden items-center gap-1 text-[10px] text-fg-mute md:flex">
             {user ? <Cloud size={11} className="text-spark-green" /> : <CloudOff size={11} />}
             {user ? (savedAt ? `enregistré à ${savedAt}` : 'compte actif') : 'invité — brouillon local'}
           </span>
+          <IconAction label="Exporter en JSON" onClick={exportJson}>
+            <Download size={15} />
+          </IconAction>
+          <IconAction label="Copier le lien" onClick={() => void copyLink()}>
+            <Link2 size={15} />
+          </IconAction>
           {aiEnabled ? (
-            <Link href="/assistant" className="btn btn-sm border-spark-violet/40 text-spark-violet">
+            <Link href="/assistant" className="hidden rounded-md px-1.5 py-1 text-[11px] text-spark-violet sm:flex sm:items-center sm:gap-1">
               <Sparkles size={12} /> Assistant
             </Link>
           ) : null}
@@ -403,30 +418,34 @@ export function EditorShell({
         </div>
       </header>
 
-      {/* corps : palette / plan / inspecteur */}
-      <div className="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[210px_minmax(0,1fr)_248px]">
-        <div className="order-2 min-h-0 lg:order-1">
-          <PartPalette
-            tool={editor.tool}
-            onTool={(tool: Tool) => apply((state) => setTool(state, tool))}
-            templates={templates}
-            onTemplate={loadTemplate}
-            compact
-          />
+      {/* corps : sur téléphone une seule zone à la fois, sur grand écran trois colonnes */}
+      <div className="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[210px_minmax(0,1fr)_252px]">
+        {/* palette (grand écran) */}
+        <div className="hidden min-h-0 lg:block">
+          <PartPalette tool={editor.tool} onTool={(tool: Tool) => apply((state) => setTool(state, tool))} templates={templates} onTemplate={loadTemplate} compact />
         </div>
 
-        <div className="order-1 flex min-h-0 flex-col gap-2 lg:order-2">
-          <div className="min-h-[380px] flex-1">
-            <EditorCanvas
-              state={editor}
-              setState={setEditor}
-              onNotice={notify}
-              onTemplate={loadTemplate}
-            />
+        {/* plan + barre rapide */}
+        <div className={cn('flex min-h-0 flex-col gap-2', mobileTab !== 'plan' && 'hidden lg:flex')}>
+          <div className="min-h-[300px] flex-1 lg:min-h-[420px]">
+            <EditorCanvas state={editor} setState={setEditor} onNotice={notify} onTemplate={loadTemplate} />
           </div>
 
+          <QuickBar
+            tool={editor.tool}
+            onTool={(tool) => apply((state) => setTool(state, tool))}
+            onSolve={solve}
+            onUndo={() => apply(undo)}
+            onRedo={() => apply(redo)}
+            canUndo={canUndo(editor)}
+            canRedo={canRedo(editor)}
+            hasSelection={Boolean(editor.selectedId)}
+            onDelete={() => apply((state) => (state.selectedId ? removePart(state, state.selectedId) : state))}
+            onRotate={() => apply((state) => (state.selectedId ? rotatePart(state, state.selectedId) : state))}
+          />
+
           {panelOpen ? (
-            <section className="panel shrink-0 p-0">
+            <section className={cn('panel shrink-0 p-0', mobileTab !== 'resultats' && 'hidden lg:block')}>
               <div className="flex items-center gap-1 border-b border-line/50 px-2 py-1">
                 {(
                   [
@@ -457,10 +476,8 @@ export function EditorShell({
                   <ChevronDown size={13} />
                 </button>
               </div>
-              <div className="max-h-[260px] overflow-y-auto p-2.5">
-                {tab === 'resultats' ? (
-                  <ResultsStrip equivalent={equivalent} solution={solution} />
-                ) : null}
+              <div className="max-h-[240px] overflow-y-auto p-2.5">
+                {tab === 'resultats' ? <ResultsStrip equivalent={equivalent} solution={solution} /> : null}
                 {tab === 'controles' ? (
                   <ul className="space-y-1">
                     {issues.map((issue, index) => (
@@ -488,52 +505,115 @@ export function EditorShell({
                 ) : null}
                 {tab === 'aide' ? (
                   <ol className="space-y-1 text-[10.5px] leading-relaxed text-fg-soft">
-                    <li><span className="text-spark-cyan">1.</span> Choisissez un dipôle (palette ou touche R/C/L/E/I).</li>
-                    <li><span className="text-spark-cyan">2.</span> Cliquez sur le plan : la pièce apparaît et est sélectionnée.</li>
-                    <li><span className="text-spark-cyan">3.</span> Glissez une pièce pour la déplacer ; T pivote, X inverse.</li>
-                    <li><span className="text-spark-cyan">4.</span> Outil Fil (W) : cliquez une borne, puis la seconde.</li>
-                    <li><span className="text-spark-cyan">5.</span> Masse (M) puis un nœud ; bornes A/B pour le point de mesure.</li>
-                    <li><span className="text-spark-cyan">6.</span> Entrée calcule : Vth, Rth, In et toutes les tensions.</li>
+                    <li><span className="text-spark-cyan">1.</span> Touchez une pièce dans la barre sous le plan.</li>
+                    <li><span className="text-spark-cyan">2.</span> Touchez le plan : la pièce se pose et reste sélectionnée.</li>
+                    <li><span className="text-spark-cyan">3.</span> Glissez-la pour la déplacer ; les boutons pivotent/suppriment.</li>
+                    <li><span className="text-spark-cyan">4.</span> « Fil » : une borne, puis la seconde.</li>
+                    <li><span className="text-spark-cyan">5.</span> « Masse » puis un nœud ; A et B pour la mesure.</li>
+                    <li><span className="text-spark-cyan">6.</span> « Calculer » : Eth, Rth, In et toutes les tensions.</li>
                   </ol>
                 ) : null}
               </div>
             </section>
           ) : (
-            <button type="button" onClick={() => setPanelOpen(true)} className="panel flex items-center justify-center gap-2 py-1.5 text-[10.5px] text-fg-soft">
-              <ChevronDown size={12} className="rotate-180" /> Afficher les résultats et contrôles
+            <button
+              type="button"
+              onClick={() => setPanelOpen(true)}
+              className="panel hidden items-center justify-center gap-2 py-1.5 text-[10.5px] text-fg-soft lg:flex"
+            >
+              <ChevronDown size={12} className="rotate-180" /> Résultats et contrôles
             </button>
           )}
         </div>
 
-        <div className="order-3 min-h-0">
-          <PartInspector
-            state={editor}
-            onChange={change}
-            onRotate={(id) => apply((state) => rotatePart(state, id))}
-            onFlip={(id) => apply((state) => flipPart(state, id))}
-            onDuplicate={(id) => apply((state) => duplicatePart(state, id))}
-            onDelete={(id) => apply((state) => removePart(state, id))}
-            onGround={(node) => apply((state) => setGround(state, node))}
-            onTerminal={(which, node) => apply((state) => setTerminal(state, which, node))}
-            onRegime={(regime, frequency) => apply((state) => setRegime(state, regime, frequency))}
-            onRename={(name) => apply((state) => renameDoc(state, name))}
-          />
-          <div className="mt-2 grid grid-cols-2 gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('Vider le plan ? L’action est annulable.')) apply(clearDoc);
-              }}
-              className="btn btn-sm border-line/60 text-fg-soft"
-            >
-              <Trash2 size={11} /> Vider
-            </button>
-            <button type="button" onClick={() => setShowHelp(true)} className="btn btn-sm border-line/60">
-              <BookOpen size={11} /> Tutoriel
-            </button>
+        {/* colonne de droite : réglages ou fabrication */}
+        <div className={cn('min-h-0 flex-col gap-2 lg:flex', mobileTab === 'plan' || mobileTab === 'resultats' ? 'hidden' : 'flex')}>
+          <div className="flex gap-1 rounded-lg border border-line/50 p-0.5">
+            {(
+              [
+                ['reglages', 'Réglages'],
+                ['decrire', 'Décrire'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setDeskTab(id)}
+                className={cn(
+                  'flex-1 rounded-md px-2 py-1 text-[10.5px] transition',
+                  deskTab === id ? 'bg-ink-800 text-fg' : 'text-fg-mute hover:text-fg-soft',
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          {deskTab === 'decrire' ? (
+            <BuildPanel onDoc={applyBuiltDoc} />
+          ) : (
+            <>
+              <PartInspector
+                state={editor}
+                onChange={change}
+                onRotate={(id) => apply((state) => rotatePart(state, id))}
+                onFlip={(id) => apply((state) => flipPart(state, id))}
+                onDuplicate={(id) => apply((state) => duplicatePart(state, id))}
+                onDelete={(id) => apply((state) => removePart(state, id))}
+                onGround={(node) => apply((state) => setGround(state, node))}
+                onTerminal={(which, node) => apply((state) => setTerminal(state, which, node))}
+                onRegime={(regime, frequency) => apply((state) => setRegime(state, regime, frequency))}
+                onRename={(name) => apply((state) => renameDoc(state, name))}
+              />
+              <div className="mt-2 grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Vider le plan ? L’action est annulable.')) apply(clearDoc);
+                  }}
+                  className="btn btn-sm border-line/60 text-fg-soft"
+                >
+                  <Trash2 size={11} /> Vider
+                </button>
+                <button type="button" onClick={() => setShowHelp(true)} className="btn btn-sm border-line/60">
+                  <BookOpen size={11} /> Tutoriel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* palette (téléphone, onglet dédié) */}
+        <div className={cn('min-h-0 lg:hidden', mobileTab === 'pieces' ? 'block' : 'hidden')}>
+          <PartPalette tool={editor.tool} onTool={(tool: Tool) => apply((state) => setTool(state, tool))} templates={templates} onTemplate={loadTemplate} />
         </div>
       </div>
+
+      {/* navigation mobile, toujours visible */}
+      <nav className="sticky bottom-0 z-30 flex border-t border-line/60 bg-ink-950/95 backdrop-blur lg:hidden">
+        {(
+          [
+            ['plan', 'Plan', Calculator],
+            ['pieces', 'Pièces', Sparkles],
+            ['reglages', 'Réglages', Info],
+            ['resultats', 'Calcul', Check],
+          ] as const
+        ).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setMobileTab(id)}
+            className={cn(
+              'flex h-12 flex-1 flex-col items-center justify-center gap-0.5 text-[9.5px]',
+              mobileTab === id ? 'text-spark-cyan' : 'text-fg-mute',
+            )}
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        ))}
+      </nav>
+
 
       {/* notifications */}
       <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-1.5">

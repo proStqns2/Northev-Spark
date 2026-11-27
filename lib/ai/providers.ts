@@ -61,6 +61,66 @@ function buildContext(agent: AgentId, task: string, doc: CircuitDoc, question?: 
   return lines.join('\n');
 }
 
+/**
+ * Appel générique à un fournisseur, avec repli automatique.
+ *
+ * Contrairement à `runAgent`, cette fonction ne suppose pas de document
+ * existant : c'est le point d'entrée utilisé pour *fabriquer* un montage à
+ * partir d'une description. Les clés personnelles priment sur celles du
+ * serveur ; aucune clé n'apparaît dans la réponse ni dans les journaux.
+ */
+export async function askModel(
+  system: string,
+  user: string,
+  options: {
+    provider?: 'auto' | 'openai' | 'gemini' | 'openrouter';
+    personalKeys?: PersonalKeys;
+    timeoutMs?: number;
+    maxTokens?: number;
+  } = {},
+): Promise<{ text: string; provider: 'openai' | 'gemini' | 'openrouter'; model: string }> {
+  const personal = options.personalKeys ?? {};
+  const status = providerStatus(personal);
+  const requested = options.provider ?? 'auto';
+  const order: Array<'openai' | 'gemini' | 'openrouter'> =
+    requested === 'auto' ? ['gemini', 'openai', 'openrouter'] : [requested];
+
+  const available = order.filter((provider) => status[provider]);
+  if (!available.length) {
+    throw new Error(
+      'Aucun fournisseur configuré. Renseignez GEMINI_API_KEY, OPENAI_API_KEY ou OPENROUTER_API_KEY (ou une clé personnelle dans /compte).',
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 25_000);
+  let lastError: Error | null = null;
+  try {
+    for (const provider of available) {
+      try {
+        const text =
+          provider === 'openai'
+            ? await callOpenAI(system, user, controller.signal, personal.openai)
+            : provider === 'gemini'
+              ? await callGemini(system, user, controller.signal, personal.gemini)
+              : await callOpenRouter(system, user, controller.signal, personal.openrouter ?? personal.openai);
+        const model =
+          provider === 'openai'
+            ? process.env.OPENAI_MODEL || 'gpt-4o-mini'
+            : provider === 'gemini'
+              ? process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+              : process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001';
+        return { text, provider, model };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Appel fournisseur échoué.');
+      }
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+  throw lastError ?? new Error('Aucun fournisseur disponible.');
+}
+
 async function callOpenAI(
   system: string,
   user: string,

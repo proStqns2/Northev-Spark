@@ -16,7 +16,8 @@
     "serve": "node scripts/serve.mjs",
     "check:studio": "node scripts/studio-check.mjs",
     "analytics:demo": "python3 analytics/spark_academy.py --input analytics/data/demo.jsonl --sample",
-    "mongo:dry": "node scripts/mongo-migrate.mjs --dry-run"
+    "mongo:dry": "node scripts/mongo-migrate.mjs --dry-run",
+    "ai:check": "node scripts/ai-selftest.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
