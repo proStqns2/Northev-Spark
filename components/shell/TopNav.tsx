@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  Beaker,
   BookOpen,
   FolderKanban,
   Shapes,
@@ -33,6 +34,7 @@ const LINKS = [
   { href: '/symboles', label: 'Symboles', icon: Shapes },
   { href: '/bibliotheque', label: 'Bibliothèque', icon: BookOpen },
   { href: '/multiwork', label: 'Multiwork', icon: Users },
+  { href: '/labo', label: 'Labo', icon: Beaker },
   { href: '/quiz', label: 'Quiz', icon: ListChecks },
   { href: '/defis', label: 'Défis', icon: Target },
   { href: '/agents', label: 'Agents', icon: Sparkles },
