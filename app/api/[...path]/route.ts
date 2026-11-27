@@ -11,6 +11,7 @@ import { templateRoutes } from '@/lib/api/routes/templates';
 import { learningRoutes } from '@/lib/api/routes/learning';
 import { dataRoutes } from '@/lib/api/routes/data';
 import { valueRoutes } from '@/lib/api/routes/values';
+import { agentRoutes } from '@/lib/api/routes/agents';
 import { consume, identityOf, rateHeaders } from '@/lib/api/rateLimit';
 import { recordError, recordRequest } from '@/lib/api/metrics';
 
@@ -39,6 +40,7 @@ const ROUTES: readonly ApiRoute[] = [
   ...learningRoutes,
   ...dataRoutes,
   ...valueRoutes,
+  ...agentRoutes,
 ];
 
 const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' } as const;

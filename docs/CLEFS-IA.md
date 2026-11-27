@@ -72,3 +72,11 @@ GitHub sont joignables). C'est pourquoi `npm run ai:check` répond
 `fetch failed` ici alors que les clés sont présentes. Sur votre machine ou sur
 Vercel, l'appel part normalement : lancez `npm run ai:check` pour le confirmer
 avant d'utiliser l'assistant.
+
+## Agents : aucun appel réseau
+
+Les onze agents de `/agents` s'exécutent **sans clé** : `lib/agents/runtime.ts`
+ne fait que du calcul (solveur MNA + contrôleur). Une clé fournisseur ne sert
+qu'à reformuler l'explication. Conséquence pratique : si `npm run ai:check`
+échoue chez vous (réseau bloqué, clé révoquée), la page `/agents` continue de
+calculer et d'afficher U_th, R_th, I_N, f₀, Q, etc.

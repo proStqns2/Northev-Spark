@@ -25,6 +25,38 @@ Ce document décrit les décisions qui répondent aux deux problèmes signalés 
   elles, `/api/ai/*` répond `403` avec un code `AI_OFF` et un lien vers
   `/assistant`, jamais une erreur silencieuse.
 
+## 1 bis. Deux serveurs, un seul runtime (agents)
+
+Les onze agents de `/agents` ne sont pas des appels de modèle : ce sont des
+fonctions de calcul déterministes, réunies dans **`lib/agents/runtime.ts`**.
+
+```
+navigateur
+   │  POST /api/agents/:id/run          (Next.js — app/api/[...path])
+   ├─────────────► EXPRESS_URL défini ? ── oui ──► POST :4001/api/v1/agents/:id/run
+   │                                                   │
+   └────────────────────────── non ────────────────────┤
+                                                       ▼
+                                        lib/agents/runtime.ts  (même module)
+                                                       │
+                                        lib/engine (MNA), lib/studio/editor
+```
+
+- **Un runtime, deux hôtes.** Express n'est pas un second moteur : il importe le
+  même module. Conséquence : impossible que les deux serveurs divergent, et le
+  test `scripts/agents-check.mjs` compare leurs grandeurs valeur par valeur.
+- **`servedBy`** dans chaque réponse (`next` | `express`) et en-tête
+  `X-Spark-Service` : l'interface affiche qui a répondu, avec la raison d'un
+  repli (`fallbackReason`). Le badge est visible dans la sortie d'agent.
+- **Aucune clé requise.** Un agent travaille hors ligne ; une clé fournisseur
+  ne sert qu'à rédiger une explication, jamais à produire une grandeur.
+- **Démarrage** : `npm run dev` (Next seul) suffit. Pour le service :
+  `npm run express` puis `EXPRESS_URL=http://127.0.0.1:4001 npm run dev`, ou
+  `npm run dev:all` qui lance les deux. Sans `EXPRESS_URL`, Next répond seul et
+  l'indique.
+
+Contrôle : `npm run check:agents` (12 contrôles sans Express, 16 avec).
+
 ## 2. Cœur de l'atelier
 
 `lib/studio/editor.ts` contient un **automate pur** : `(état, geste) → état`.

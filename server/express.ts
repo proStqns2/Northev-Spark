@@ -37,6 +37,8 @@ import { TEMPLATES } from '@/lib/data/templates';
 import { circuitToSvg } from '@/lib/studio/export';
 import { equivalentOf } from '@/lib/engine/equivalent';
 import { formatSI } from '@/lib/engine/format';
+import { agentCatalogue, runAgentLocally } from '@/lib/agents/runtime';
+import type { AgentId } from '@/lib/ai/agents';
 
 const PORT = Number(process.env.EXPRESS_PORT ?? process.env.PORT ?? 4001);
 const HOST = process.env.EXPRESS_HOST ?? '0.0.0.0';
@@ -161,6 +163,8 @@ app.get('/api/v1/health', (_req, res) => {
     uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
     cacheEntries: cache.size,
     keyRequired: Boolean(SERVICE_KEY),
+    agents: agentCatalogue().length,
+    routes: ['/api/v1/analyze', '/api/v1/values', '/api/v1/templates', '/api/v1/agents', '/api/v1/agents/:id/run'],
   });
 });
 
@@ -216,6 +220,56 @@ app.post('/api/v1/preview', requireKey, (req, res, next) => {
     res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.send(svg);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ------------------------------------------------------------------ agents */
+
+/**
+ * Les agents sont exposés par le service Express avec **le même runtime** que
+ * Next (`lib/agents/runtime.ts`). Le site délègue ici quand `EXPRESS_URL` est
+ * défini ; sinon il exécute le module en local. Aucune divergence possible.
+ */
+
+app.get('/api/v1/agents', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.json({ ok: true, servedBy: 'express', count: agentCatalogue().length, agents: agentCatalogue() });
+});
+
+app.post('/api/v1/agents/:id/run', requireKey, (req, res, next) => {
+  try {
+    const id = req.params.id as AgentId;
+    const known = agentCatalogue().some((agent) => agent.id === id);
+    if (!known) {
+      res.status(404).json({ ok: false, error: `Agent inconnu : ${id}.` });
+      return;
+    }
+    const body = (req.body ?? {}) as { task?: string; doc?: unknown; values?: unknown };
+    const outcome = runAgentLocally(id, {
+      task: typeof body.task === 'string' ? body.task : undefined,
+      doc: body.doc as never,
+      values: body.values,
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Spark-Service', 'express');
+    res.json({ ok: outcome.ok, servedBy: 'express', outcome });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/v1/agents/:id/run', (req, res, next) => {
+  try {
+    const id = req.params.id as AgentId;
+    if (!agentCatalogue().some((agent) => agent.id === id)) {
+      res.status(404).json({ ok: false, error: `Agent inconnu : ${id}.` });
+      return;
+    }
+    const outcome = runAgentLocally(id, { task: typeof req.query.task === 'string' ? req.query.task : undefined });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: outcome.ok, servedBy: 'express', outcome });
   } catch (error) {
     next(error);
   }
