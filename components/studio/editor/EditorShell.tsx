@@ -15,6 +15,7 @@ import {
   Info,
   Keyboard,
   Link2,
+  ListPlus,
   Loader2,
   Redo2,
   Save,
@@ -65,6 +66,8 @@ import { PartPalette } from './PartPalette';
 import { PartInspector } from './PartInspector';
 import { QuickBar } from './QuickBar';
 import { BuildPanel } from './BuildPanel';
+import { StepBuilder } from './StepBuilder';
+import { StudioErrorBoundary } from './StudioErrorBoundary';
 
 /**
  * Coquille de l'atelier.
@@ -116,9 +119,9 @@ export function EditorShell({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   /** onglets de l'interface mobile : chacune des zones reste atteignable */
-  const [mobileTab, setMobileTab] = useState<'plan' | 'pieces' | 'reglages' | 'resultats'>('plan');
+  const [mobileTab, setMobileTab] = useState<'plan' | 'pieces' | 'pas' | 'reglages' | 'resultats'>('plan');
   /** colonne de droite : réglages ou fabrication assistée */
-  const [deskTab, setDeskTab] = useState<'reglages' | 'decrire'>('reglages');
+  const [deskTab, setDeskTab] = useState<'reglages' | 'pas' | 'decrire'>('reglages');
   /** incrémenté quand on veut recadrer la vue sur le montage */
   const [fitRevision, setFitRevision] = useState(0);
   const noticeId = useRef(0);
@@ -451,14 +454,17 @@ export function EditorShell({
 
         {/* plan + barre rapide */}
         <div className={cn('flex min-h-0 flex-col gap-2', mobileTab !== 'plan' && 'hidden lg:flex')}>
-          <div className="min-h-[300px] flex-1 lg:min-h-[420px]">
-            <EditorCanvas
-              state={editor}
-              setState={setEditor}
-              onNotice={notify}
-              onTemplate={loadTemplate}
-              fitRevision={fitRevision}
-            />
+          {/* hauteur explicite : le plan reste visible même si la colonne flex s'écrase */}
+          <div className="h-[46dvh] min-h-[280px] w-full shrink-0 lg:h-auto lg:min-h-[420px] lg:flex-1">
+            <StudioErrorBoundary label="Le plan">
+              <EditorCanvas
+                state={editor}
+                setState={setEditor}
+                onNotice={notify}
+                onTemplate={loadTemplate}
+                fitRevision={fitRevision}
+              />
+            </StudioErrorBoundary>
           </div>
 
           <QuickBar
@@ -541,6 +547,10 @@ export function EditorShell({
                     <li><span className="text-spark-cyan">4.</span> « Fil » : une borne, puis la seconde.</li>
                     <li><span className="text-spark-cyan">5.</span> « Masse » puis un nœud ; A et B pour la mesure.</li>
                     <li><span className="text-spark-cyan">6.</span> « Calculer » : Eth, Rth, In et toutes les tensions.</li>
+                    <li>
+                      <span className="text-spark-cyan">Sans plan ?</span> Onglet « Pas à pas » : chaque bouton pose une
+                      pièce et la raccorde, sans dessin.
+                    </li>
                   </ol>
                 ) : null}
               </div>
@@ -562,6 +572,7 @@ export function EditorShell({
             {(
               [
                 ['reglages', 'Réglages'],
+                ['pas', 'Pas à pas'],
                 ['decrire', 'Décrire'],
               ] as const
             ).map(([id, label]) => (
@@ -579,7 +590,9 @@ export function EditorShell({
             ))}
           </div>
 
-          {deskTab === 'decrire' ? (
+          {deskTab === 'pas' ? (
+            <StepBuilder state={editor} apply={apply} onSolve={solve} />
+          ) : deskTab === 'decrire' ? (
             <BuildPanel onDoc={applyBuiltDoc} />
           ) : (
             <>
@@ -625,6 +638,7 @@ export function EditorShell({
           [
             ['plan', 'Plan', Calculator],
             ['pieces', 'Pièces', Sparkles],
+            ['pas', 'Pas à pas', ListPlus],
             ['reglages', 'Réglages', Info],
             ['resultats', 'Calcul', Check],
           ] as const
@@ -632,7 +646,11 @@ export function EditorShell({
           <button
             key={id}
             type="button"
-            onClick={() => setMobileTab(id)}
+            onClick={() => {
+              setMobileTab(id);
+              if (id === 'pas') setDeskTab('pas');
+              if (id === 'reglages') setDeskTab('reglages');
+            }}
             className={cn(
               'flex h-12 flex-1 flex-col items-center justify-center gap-0.5 text-[9.5px]',
               mobileTab === id ? 'text-spark-cyan' : 'text-fg-mute',

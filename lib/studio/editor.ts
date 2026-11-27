@@ -393,6 +393,57 @@ export function placePart(
   return { state: { ...commit(state, doc, `Poser ${COMPONENT_META[kind].label}`), selectedId: component.id }, component };
 }
 
+/**
+ * Pose un dipôle **à partir d'un nœud existant**.
+ *
+ * `placePart` cherche deux cellules libres : deux pièces posées côte à côte ne
+ * partagent donc jamais de nœud, et il faut un fil pour les relier. Pour un
+ * montage en série construit bouton par bouton (téléphone, clavier, panneau
+ * « Pas à pas »), on veut l'inverse : la borne A reprend le nœud de départ et
+ * la borne B part vers la première cellule libre. Le dipôle est ainsi
+ * réellement raccordé, sans passer par le plan.
+ */
+export function placePartFrom(
+  state: EditorState,
+  kind: ComponentKind,
+  from: Cell,
+  options: { value?: number } = {},
+): PlaceResult {
+  const vertical = kind === 'vsource' || kind === 'isource';
+  const axis = vertical ? { x: 0, y: 1 } : { x: 1, y: 0 };
+  const alternate = vertical ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  const directions: Cell[] = [
+    { x: axis.x * 2, y: axis.y * 2 },
+    { x: axis.x * -2, y: axis.y * -2 },
+    { x: alternate.x * 2, y: alternate.y * 2 },
+    { x: alternate.x * -2, y: alternate.y * -2 },
+  ];
+  const end = directions
+    .map((delta) => ({ x: from.x + delta.x, y: from.y + delta.y }))
+    .find((cell) => isFree(state.doc, cell));
+  if (!end) return { state, component: null };
+
+  placementCounter += 1;
+  const component: Component = {
+    id: `p${Date.now().toString(36)}${placementCounter.toString(36)}`,
+    kind,
+    a: cellKey(from.x, from.y),
+    b: cellKey(end.x, end.y),
+    value: options.value ?? DEFAULT_COMPONENT_VALUE(kind),
+    label: nextLabel(state.doc, kind),
+    ...(kind === 'switch' ? { closed: true } : {}),
+  };
+  const doc: CircuitDoc = {
+    ...state.doc,
+    components: [...state.doc.components, component],
+    ground: state.doc.ground || component.a,
+  };
+  return {
+    state: { ...commit(state, doc, `Poser ${COMPONENT_META[kind].label}`), selectedId: component.id },
+    component,
+  };
+}
+
 /** Ajoute un fil entre deux nœuds (sans doublon ni fil nul). */
 export function addWire(doc: CircuitDoc, from: string, to: string): { doc: CircuitDoc; added: boolean } {
   if (!from || !to || from === to) return { doc, added: false };

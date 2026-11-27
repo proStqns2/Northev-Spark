@@ -157,6 +157,35 @@ for (let action = 0; action < 2; action += 1) {
 }
 check('Annuler restaure les pièces et leurs positions', JSON.stringify(snapshot()) === JSON.stringify(beforeValues));
 
+// --- voie sans plan : montage pas à pas (boutons seuls, aucun canvas) ---
+const pasTab = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Pas à pas');
+pasTab?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+await new Promise((resolve) => setTimeout(resolve, 200));
+const builder = document.querySelector('[aria-label="Montage pas à pas"]');
+check('le panneau « Montage pas à pas » est accessible', Boolean(builder));
+
+const placeButton = [...(builder?.querySelectorAll('button') ?? [])].find((button) =>
+  /^Poser/.test(button.textContent.trim()),
+);
+check('le bouton « Poser » existe sans toucher au plan', Boolean(placeButton));
+
+const beforeStep = partsOf().map((part) => part.getAttribute('data-part-id'));
+placeButton?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+await new Promise((resolve) => setTimeout(resolve, 160));
+placeButton?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+await new Promise((resolve) => setTimeout(resolve, 160));
+const afterStep = partsOf().map((part) => part.getAttribute('data-part-id'));
+check('deux clics ajoutent deux dipôles au document', afterStep.length === beforeStep.length + 2,
+  `${beforeStep.length} → ${afterStep.length}`);
+const addedParts = partsOf().filter((part) => !beforeStep.includes(part.getAttribute('data-part-id')));
+const addedNodes = addedParts.map((part) => [part.getAttribute('data-a'), part.getAttribute('data-b')]);
+const chained =
+  addedNodes.length === 2 && addedNodes.some(([, b], index) => addedNodes[index === 0 ? 1 : 0]?.[0] === b);
+check('les dipôles ajoutés s’enchaînent sur un nœud commun', chained, JSON.stringify(addedNodes));
+
+const solveStep = [...(builder?.querySelectorAll('button') ?? [])].find((button) => /Calculer ce montage/.test(button.textContent));
+check('le panneau lance le calcul lui-même', Boolean(solveStep));
+
 check('aucune erreur JavaScript', errors.length === 0, errors[0]?.slice(0, 120) ?? '');
 
 function doc_key(target, key, options = {}) {

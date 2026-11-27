@@ -32,6 +32,7 @@ import {
   partAtCell,
   partGeometry,
   placePart,
+  placePartFrom,
   redo,
   removePart,
   replaceDoc,
@@ -117,6 +118,27 @@ describe('poser une pièce', () => {
     state = placePart(state, 'resistor', { x: 6, y: 2 }).state;
     state = placePart(state, 'capacitor', { x: 10, y: 2 }).state;
     assert.deepEqual(state.doc.components.map((part) => part.label), ['R1', 'R2', 'C1']);
+  });
+
+  it('enchaîne deux dipôles en série sur un nœud commun (sans plan)', () => {
+    let state = createEditor(emptyDoc());
+    const first = placePart(state, 'resistor', { x: 2, y: 2 });
+    state = first.state;
+    const second = placePartFrom(state, 'resistor', parseCell(first.component!.b)!);
+    assert.ok(second.component);
+    assert.equal(second.component!.a, first.component!.b, 'la borne A reprend le nœud du précédent');
+    assert.notEqual(second.component!.b, second.component!.a);
+    assert.equal(second.state.doc.components.length, 2);
+  });
+
+  it('placePartFrom refuse de superposer deux dipôles', () => {
+    let state = createEditor(emptyDoc());
+    state = placePart(state, 'resistor', { x: 2, y: 2 }).state;
+    const wrapped = { ...state, doc: { ...state.doc, components: [state.doc.components[0]] } };
+    const result = placePartFrom(wrapped, 'capacitor', parseCell(wrapped.doc.components[0].a)!);
+    // la cellule voisine droite est libre : le condensateur s'y pose, sans doublon
+    assert.ok(result.component);
+    assert.notEqual(result.component!.b, wrapped.doc.components[0].b);
   });
 
   it('définit une masse dès la première pièce (le solveur exige une référence)', () => {
