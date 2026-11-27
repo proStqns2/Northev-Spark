@@ -120,6 +120,38 @@ export function useCollaboration(options: {
   const queuedRef = useRef<CircuitDoc | null>(null);
   const typingSent = useRef(0);
   const lastTypingRef = useRef(false);
+  /** rafales de curseurs mises en attente : on redessine au plus ~8 fois/s */
+  const pendingCursors = useRef<LiveCursor[] | null>(null);
+  const cursorFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPresence = useRef<LiveParticipant[] | null>(null);
+  const presenceFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Les curseurs arrivent à ~9 Hz. Les appliquer tels quels force un rendu du
+   * plan à chaque battement, ce qui rendait le glisser saccadé sur un montage
+   * fourni. On regroupe les mises à jour : un seul rendu par fenêtre.
+   */
+  const pushCursors = useCallback((next: LiveCursor[]) => {
+    pendingCursors.current = next;
+    if (cursorFlushRef.current) return;
+    cursorFlushRef.current = setTimeout(() => {
+      cursorFlushRef.current = null;
+      const value = pendingCursors.current;
+      pendingCursors.current = null;
+      if (value) setCursors(value);
+    }, 120);
+  }, []);
+
+  const pushPresence = useCallback((next: LiveParticipant[]) => {
+    pendingPresence.current = next;
+    if (presenceFlushRef.current) return;
+    presenceFlushRef.current = setTimeout(() => {
+      presenceFlushRef.current = null;
+      const value = pendingPresence.current;
+      pendingPresence.current = null;
+      if (value) setParticipants(value);
+    }, 400);
+  }, []);
 
   useEffect(() => {
     onRemoteDocRef.current = onRemoteDoc;
@@ -195,7 +227,7 @@ export function useCollaboration(options: {
           if (!response.ok) return;
           const payload = await response.json();
           setConnected(true);
-          setParticipants(payload.participants ?? []);
+          pushPresence(payload.participants ?? []);
           rememberLocks(payload.locks);
           setTyping(payload.typing ?? []);
           if (payload.revision > revisionRef.current) {
@@ -232,14 +264,14 @@ export function useCollaboration(options: {
 
     source.addEventListener('presence', (event) => {
       const data = JSON.parse((event as MessageEvent).data) as { participants: LiveParticipant[] };
-      setParticipants(data.participants ?? []);
+      pushPresence(data.participants ?? []);
       setConnected(true);
       setTransport((current) => (current === 'poll' ? current : 'sse'));
     });
 
     source.addEventListener('cursors', (event) => {
       const data = JSON.parse((event as MessageEvent).data) as { cursors: LiveCursor[] };
-      setCursors(data.cursors ?? []);
+      pushCursors(data.cursors ?? []);
     });
 
     source.addEventListener('locks', (event) => {
@@ -311,8 +343,12 @@ export function useCollaboration(options: {
       source.close();
       sourceRef.current = null;
       stopPolling();
+      if (cursorFlushRef.current) clearTimeout(cursorFlushRef.current);
+      if (presenceFlushRef.current) clearTimeout(presenceFlushRef.current);
+      cursorFlushRef.current = null;
+      presenceFlushRef.current = null;
     };
-  }, [code, enabled, rememberLocks]);
+  }, [code, enabled, rememberLocks, pushCursors, pushPresence]);
 
   /* ------------------------------------------------------------- chat / doc */
   const sendMessage = useCallback(

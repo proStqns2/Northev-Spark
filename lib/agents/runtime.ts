@@ -21,6 +21,7 @@ import { normalizeValueInput } from '@/lib/express/params';
 import { templateDoc } from '@/lib/data/loadDoc';
 import { AGENTS, agentById, type AgentId } from '@/lib/ai/agents';
 import { diagnose } from '@/lib/studio/editor';
+import { taskOverlay, type TaskOverlay } from './tasks';
 
 export interface AgentMetric {
   label: string;
@@ -466,6 +467,77 @@ const mentor: Runner = (doc, _input, task) => {
   };
 };
 
+/**
+ * Volt — auditeur indépendant.
+ *
+ * Mentor explique, Volt *refuse* : il vérifie la topologie, la référence de
+ * masse, le nombre de sources et l'identité U_th = I_N · Z_th, puis signe ou
+ * rejette le montage. C'est un contrôle à quatre points, pas une explication.
+ */
+const auditeur: Runner = (doc, _input, task) => {
+  const equivalent = equivalentOf(doc);
+  const issues = diagnose(doc);
+  const errors = issues.filter((issue) => issue.level === 'error');
+  const warnings = issues.filter((issue) => issue.level === 'warning');
+  const independent = doc.components.filter((part) => part.kind === 'vsource' || part.kind === 'isource');
+  const terminals =
+    !doc.terminals.a || !doc.terminals.b
+      ? 'manquantes'
+      : doc.terminals.a === doc.terminals.b
+        ? 'confondues'
+        : 'distinctes';
+  const crossCheck = equivalent.ok ? equivalent.verificationErrorPct : Number.NaN;
+  const verdict = errors.length > 0 ? 'refusé' : equivalent.ok ? 'certifié' : 'en attente';
+
+  const checks: AgentStep[] = [
+    {
+      title: '1. Bornes du dipôle',
+      detail: 'Deux bornes distinctes sont indispensables : sans elles, aucun modèle équivalent n’existe.',
+      value: terminals,
+    },
+    {
+      title: '2. Référence de masse',
+      detail: 'L’analyse nodale exige un nœud de référence relié au réseau.',
+      value: doc.ground ? `masse en « ${doc.ground} »` : 'masse automatique',
+    },
+    {
+      title: '3. Sources indépendantes',
+      detail: 'Une source de tension ne doit jamais être court-circuitée ; une source de courant jamais ouverte.',
+      value: `${independent.length} source(s)`,
+    },
+    {
+      title: '4. Identité T ⇄ N',
+      detail: 'Le contrôle croisé U_th = I_N · Z_th est la signature du modèle : au-delà de 1 %, le montage est suspect.',
+      value: equivalent.ok ? `${crossCheck.toPrecision(3)} %` : 'non calculable',
+    },
+    ...issues.slice(0, 3).map((issue) => ({
+      title: issue.level === 'error' ? 'Blocage' : issue.level === 'warning' ? 'Réserve' : 'Bon point',
+      detail: issue.message,
+      value: issue.hint ?? '—',
+    })),
+  ];
+
+  return {
+    ok: errors.length === 0 && equivalent.ok,
+    task,
+    summary:
+      errors.length > 0
+        ? `Montage refusé : ${errors.length} erreur(s) bloquante(s) — ${errors[0].message}`
+        : equivalent.ok
+          ? `Montage certifié : bornes ${terminals}, ${independent.length} source(s), U_th = ${volt(abs(equivalent.vth))} et R_th = ${ohm(abs(equivalent.rth))}.`
+          : `Audit en attente : ${equivalent.error ?? 'le modèle équivalent n’est pas calculable.'}`,
+    metrics: [
+      { label: 'verdict', value: verdict },
+      { label: 'erreurs', value: String(errors.length) },
+      { label: 'avertissements', value: String(warnings.length) },
+      { label: 'contrôle croisé', value: equivalent.ok ? `${crossCheck.toPrecision(3)} %` : '—', hint: 'tolérance 1 %' },
+      { label: 'bornes', value: terminals },
+    ],
+    steps: checks,
+    warnings: warnings.map((issue) => issue.message).slice(0, 4),
+  };
+};
+
 const RUNNERS: Record<AgentId, Runner> = {
   theo,
   nora,
@@ -476,13 +548,47 @@ const RUNNERS: Record<AgentId, Runner> = {
   lab,
   hub,
   dipoles,
-  volt: mentor,
+  volt: auditeur,
   mentor,
 };
 
 /**
+ * Fusionne la sortie de base de l'agent avec la tâche demandée.
+ *
+ * Les grandeurs de la tâche passent devant (elles répondent à la question
+ * posée) ; celles de l'agent complètent sans jamais écraser un libellé déjà
+ * présent. Les étapes de la tâche précèdent celles du calcul générique.
+ */
+function mergeTask(base: ReturnType<Runner>, overlay: TaskOverlay | null): ReturnType<Runner> {
+  if (!overlay) return base;
+  const metrics = [...(overlay.metrics ?? [])];
+  for (const metric of base.metrics) {
+    if (!metrics.some((entry) => entry.label === metric.label)) metrics.push(metric);
+  }
+  /* rien ne se perd : la synthèse propre à l'agent reste lisible en étape */
+  const lecture =
+    overlay.summary && overlay.summary !== base.summary
+      ? [{ title: 'Lecture de l’agent', detail: base.summary, value: 'synthèse' }]
+      : [];
+  const steps = [...(overlay.steps ?? []), ...lecture, ...base.steps].slice(0, 16);
+  const warnings = Array.from(new Set([...(overlay.warnings ?? []), ...base.warnings])).slice(0, 8);
+  return {
+    ...base,
+    ok: overlay.ok ?? base.ok,
+    summary: overlay.summary ?? base.summary,
+    metrics,
+    steps,
+    warnings,
+    table: overlay.table ?? base.table,
+  };
+}
+
+/**
  * Exécute un agent. Aucun accès réseau, aucune clé : c'est du calcul local
  * déterministe, donc utilisable hors ligne, sur téléphone, et testable.
+ *
+ * La tâche demandée n'est pas un simple libellé : `taskOverlay` recalcule avec
+ * elle (superposition, diagnostic, quiz…) et ses résultats passent devant.
  */
 export function runAgentLocally(agentId: AgentId, input: AgentRunInput = {}): AgentOutcome {
   const started = Date.now();
@@ -491,7 +597,7 @@ export function runAgentLocally(agentId: AgentId, input: AgentRunInput = {}): Ag
   const doc = documentFor(agentId, input);
   const task = input.task ?? definition.task;
   const runner = RUNNERS[agentId] ?? mentor;
-  const outcome = runner(doc, input, task);
+  const outcome = mergeTask(runner(doc, input, task), taskOverlay(agentId, task, doc));
   const solution = solveDocument(doc, { sourcesOn: true });
   return {
     ...outcome,

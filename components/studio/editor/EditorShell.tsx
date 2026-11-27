@@ -66,6 +66,7 @@ import { PartPalette } from './PartPalette';
 import { PartInspector } from './PartInspector';
 import { QuickBar } from './QuickBar';
 import { BuildPanel } from './BuildPanel';
+import { CodePanel } from './CodePanel';
 import { StepBuilder } from './StepBuilder';
 import { StudioErrorBoundary } from './StudioErrorBoundary';
 
@@ -120,8 +121,8 @@ export function EditorShell({
   const [panelOpen, setPanelOpen] = useState(true);
   /** onglets de l'interface mobile : chacune des zones reste atteignable */
   const [mobileTab, setMobileTab] = useState<'plan' | 'pieces' | 'pas' | 'reglages' | 'resultats'>('plan');
-  /** colonne de droite : réglages ou fabrication assistée */
-  const [deskTab, setDeskTab] = useState<'reglages' | 'pas' | 'decrire'>('reglages');
+  /** colonne de droite : réglages, fabrication assistée ou code d'équivalence */
+  const [deskTab, setDeskTab] = useState<'reglages' | 'pas' | 'decrire' | 'code'>('reglages');
   /** incrémenté quand on veut recadrer la vue sur le montage */
   const [fitRevision, setFitRevision] = useState(0);
   const noticeId = useRef(0);
@@ -572,6 +573,7 @@ export function EditorShell({
             {(
               [
                 ['reglages', 'Réglages'],
+                ['code', 'Code'],
                 ['pas', 'Pas à pas'],
                 ['decrire', 'Décrire'],
               ] as const
@@ -594,6 +596,19 @@ export function EditorShell({
             <StepBuilder state={editor} apply={apply} onSolve={solve} />
           ) : deskTab === 'decrire' ? (
             <BuildPanel onDoc={applyBuiltDoc} />
+          ) : deskTab === 'code' ? (
+            <CodePanel
+              doc={editor.doc}
+              summary={
+                equivalent.ok
+                  ? {
+                      vth: abs(equivalent.vth),
+                      rth: abs(equivalent.rth),
+                      inorton: abs(equivalent.inorton),
+                    }
+                  : undefined
+              }
+            />
           ) : (
             <>
               <PartInspector

@@ -5,6 +5,7 @@ import { THEME_COOKIE } from '@/lib/auth/config';
 import { readSessionToken } from '@/lib/auth/session';
 import { resolveSession } from '@/lib/db/repo';
 import { TopNav } from '@/components/shell/TopNav';
+import { SiteFooter } from '@/components/shell/SiteFooter';
 import { ToastProvider } from '@/components/ui/Toast';
 
 export const metadata: Metadata = {
@@ -52,6 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="flex min-h-screen flex-col">
             <TopNav user={user} />
             <main className="flex-1">{children}</main>
+            <SiteFooter />
           </div>
         </ToastProvider>
       </body>

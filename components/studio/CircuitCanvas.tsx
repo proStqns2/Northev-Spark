@@ -141,12 +141,32 @@ export function CircuitCanvas({
     [toSvg],
   );
 
+  /**
+   * Cadre la vue sur le montage, avec une marge d'un tiers pour que les
+   * symboles ne touchent jamais le bord.
+   */
   const fit = useCallback(() => {
     const bounds = circuitBounds(doc.components);
-    const w = Math.max((bounds.maxX - bounds.minX) * GRID, MIN_VIEW.w);
-    const h = Math.max((bounds.maxY - bounds.minY) * GRID, MIN_VIEW.h);
-    setView({ x: bounds.minX * GRID, y: bounds.minY * GRID, w, h });
+    const w = Math.max((bounds.maxX - bounds.minX) * GRID * 1.35, MIN_VIEW.w);
+    const h = Math.max((bounds.maxY - bounds.minY) * GRID * 1.35, MIN_VIEW.h);
+    const cx = ((bounds.minX + bounds.maxX) / 2) * GRID;
+    const cy = ((bounds.minY + bounds.maxY) / 2) * GRID;
+    setView({ x: cx - w / 2, y: cy - h / 2, w, h });
   }, [doc.components]);
+
+  /**
+   * Zoom autour du centre de la vue. Bornes larges : on peut dézoomer pour voir
+   * tout un montage long, et zoomer jusqu'à lire un libellé.
+   */
+  const zoomBy = useCallback((factor: number) => {
+    setView((current) => {
+      const w = Math.min(Math.max(current.w * factor, 160), 6000);
+      const h = Math.min(Math.max(current.h * factor, 120), 4000);
+      const cx = current.x + current.w / 2;
+      const cy = current.y + current.h / 2;
+      return { x: cx - w / 2, y: cy - h / 2, w, h };
+    });
+  }, []);
 
   useEffect(() => {
     fit();
@@ -165,13 +185,12 @@ export function CircuitCanvas({
   }, []);
 
   const bounds = useMemo(() => circuitBounds(doc.components), [doc.components]);
-  const vb = useMemo(() => {
-    const width = Math.max((bounds.maxX - bounds.minX) * GRID, MIN_VIEW.w) * 0.72;
-    const height = Math.max((bounds.maxY - bounds.minY) * GRID, MIN_VIEW.h) * 0.72;
-    const cx = ((bounds.minX + bounds.maxX) / 2) * GRID;
-    const cy = ((bounds.minY + bounds.maxY) / 2) * GRID;
-    return `${cx - width / 2 + 20} ${cy - height / 2 + 20} ${width} ${height}`;
-  }, [bounds]);
+  /**
+   * Le viewBox suit l'état `view` : c'est ce qui rend la molette, les boutons
+   * +/− et le déplacement réellement efficaces (auparavant il était recalculé
+   * depuis les bornes du montage, donc tout zoom était ignoré).
+   */
+  const vb = useMemo(() => `${view.x} ${view.y} ${view.w} ${view.h}`, [view]);
 
   /* ------------------------------------------------------------ interactions */
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -385,11 +404,20 @@ export function CircuitCanvas({
         setDraft(null);
         onSelect(null);
       }
-      if (event.key.toLowerCase() === 'f') fit();
+      // zoom clavier : + / − / 0 (comme dans un logiciel de schéma)
+      if (event.key === '+' || event.key === '=' ) {
+        event.preventDefault();
+        zoomBy(0.82);
+      }
+      if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        zoomBy(1.22);
+      }
+      if (event.key === '0' || event.key.toLowerCase() === 'f') fit();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doc, selectedId, onChange, onSelect, fit]);
+  }, [doc, selectedId, onChange, onSelect, fit, zoomBy]);
 
   /* ------------------------------------------------------------------ rendu */
   const nodePoints = useMemo(() => {
@@ -502,6 +530,7 @@ export function CircuitCanvas({
       <svg
         ref={svgRef}
         viewBox={vb}
+        shapeRendering="geometricPrecision"
         className={cn(
           'h-full w-full touch-none select-none',
           tool.mode === 'select' ? 'cursor-default' : 'cursor-crosshair',
@@ -803,31 +832,40 @@ export function CircuitCanvas({
         <span className="chip bg-ink-950/80 backdrop-blur">r : pivoter</span>
         <span className="chip bg-ink-950/80 backdrop-blur">ctrl+z : annuler</span>
       </div>
-      <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+      <div className="absolute right-3 top-3 flex flex-col items-stretch gap-1.5">
         <button
           type="button"
-          onClick={() => setView((v) => ({ ...v, w: v.w * 0.85, h: v.h * 0.85 }))}
-          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-sm leading-none text-fg-soft backdrop-blur transition hover:text-fg"
-          title="Zoom avant"
+          onClick={() => zoomBy(0.82)}
+          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-sm leading-none text-fg-soft backdrop-blur transition hover:border-spark-cyan/60 hover:text-fg"
+          title="Zoom avant (touche +)"
+          aria-label="Zoom avant"
         >
           +
         </button>
         <button
           type="button"
-          onClick={() => setView((v) => ({ ...v, w: v.w * 1.18, h: v.h * 1.18 }))}
-          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-sm leading-none text-fg-soft backdrop-blur transition hover:text-fg"
-          title="Zoom arrière"
+          onClick={() => zoomBy(1.22)}
+          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-sm leading-none text-fg-soft backdrop-blur transition hover:border-spark-cyan/60 hover:text-fg"
+          title="Zoom arrière (touche −)"
+          aria-label="Zoom arrière"
         >
           −
         </button>
         <button
           type="button"
           onClick={fit}
-          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-[10px] font-semibold text-fg-soft backdrop-blur transition hover:text-fg"
-          title="Ajuster la vue"
+          className="h-7 w-7 rounded-md border border-line/70 bg-ink-900/90 text-[10px] font-semibold text-fg-soft backdrop-blur transition hover:border-spark-cyan/60 hover:text-fg"
+          title="Ajuster la vue (touche 0)"
+          aria-label="Ajuster la vue"
         >
           ⤢
         </button>
+        <span
+          className="rounded-md border border-line/70 bg-ink-900/90 px-1 py-0.5 text-center font-mono text-[9px] text-fg-mute backdrop-blur"
+          aria-label="Niveau de zoom"
+        >
+          {Math.round((MIN_VIEW.w / view.w) * 100)}%
+        </span>
       </div>
 
       {!doc.components.length ? (

@@ -38,7 +38,7 @@ const json = async (path, init) => {
 const catalogue = await json('/api/agents');
 check('GET /api/agents répond 200', catalogue.status === 200, `HTTP ${catalogue.status}`);
 const agents = catalogue.body?.agents ?? [];
-check('le catalogue contient les dix agents', agents.length >= 10, `${agents.length} agents`);
+check('le catalogue contient les onze agents', agents.length >= 11, `${agents.length} agents`);
 check(
   'chaque agent a son emblème et ses tâches',
   agents.every((agent) => agent.avatar?.startsWith('/agents/') && (agent.tasks?.length ?? 0) > 0),
@@ -86,6 +86,46 @@ const coils = await json('/api/agents/coils/run', {
 });
 const f0 = coils.body?.outcome?.metrics?.find((metric) => metric.label === 'f₀')?.value ?? '';
 check('Bobines calcule f₀ à partir des valeurs imposées', /5[,.]0\d/.test(f0), f0);
+
+/* -------------------------------------------- 2 bis. une tâche = un calcul */
+const superposition = await json('/api/agents/theo/run', {
+  method: 'POST',
+  body: JSON.stringify({ task: 'superposition' }),
+});
+const superpositionGap = superposition.body?.outcome?.metrics?.find((metric) => metric.label === 'écart')?.value ?? '';
+check(
+  'la tâche « superposition » publie son écart de linéarité',
+  /%/.test(superpositionGap),
+  superpositionGap,
+);
+check(
+  'la somme des contributions est détaillée',
+  (superposition.body?.outcome?.steps ?? []).some((step) => /Somme des contributions/.test(step.title)),
+);
+
+const quiz = await json('/api/agents/mentor/run', { method: 'POST', body: JSON.stringify({ task: 'quiz' }) });
+const quizSteps = quiz.body?.outcome?.steps ?? [];
+check(
+  'la tâche « quiz » corrige quatre questions',
+  quizSteps.length === 4 && quizSteps.every((step) => /^Question/.test(step.title)),
+  `${quizSteps.length} questions`,
+);
+
+const verification = await json('/api/agents/lab/run', {
+  method: 'POST',
+  body: JSON.stringify({ task: 'verification' }),
+});
+check(
+  'la tâche « verification » rend un procès-verbal',
+  (verification.body?.outcome?.table?.rows?.length ?? 0) >= 3,
+  `${verification.body?.outcome?.table?.rows?.length ?? 0} lignes`,
+);
+
+const taskDiff = await json('/api/agents/theo/run', { method: 'POST', body: JSON.stringify({ task: 'diagnostic' }) });
+check(
+  'deux tâches ne rendent pas le même résumé',
+  taskDiff.body?.outcome?.summary !== superposition.body?.outcome?.summary,
+);
 
 const unknown = await json('/api/agents/pirate/run', { method: 'POST', body: JSON.stringify({}) });
 check('un agent inconnu est refusé (404)', unknown.status === 404, `HTTP ${unknown.status}`);

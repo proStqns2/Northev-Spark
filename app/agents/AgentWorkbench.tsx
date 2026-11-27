@@ -17,6 +17,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
+import { AgentEmblem } from '@/components/agents/AgentEmblem';
 import { cn } from '@/lib/utils';
 
 /**
@@ -232,13 +233,33 @@ export function AgentWorkbench({
                     >
                       <Image
                         src={agent.avatar}
-                        alt={`Emblème de l’agent ${agent.name} — ${agent.role}`}
+                        alt=""
+                        aria-hidden="true"
                         width={340}
                         height={191}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                        className="h-full w-full object-cover opacity-45 transition duration-500 group-hover:scale-[1.04] group-hover:opacity-60"
                         unoptimized
                       />
+                      {/* voile : garantit le contraste du texte sur n'importe quelle tuile */}
                       <span
+                        aria-hidden="true"
+                        className="absolute inset-0"
+                        style={{
+                          background: `linear-gradient(150deg, ${agent.color}33 0%, #0b1220d9 55%, #0b1220f2 100%)`,
+                        }}
+                      />
+                      <span className="absolute left-2.5 top-2.5 flex items-center gap-2">
+                        <AgentEmblem id={agent.id} size={30} color={agent.color} className="shadow-lg shadow-black/40" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13px] font-semibold text-white drop-shadow">{agent.name}</span>
+                          <span className="block truncate text-[9.5px] text-white/60">{agent.role}</span>
+                        </span>
+                      </span>
+                      <span className="absolute bottom-2 right-2 rounded border border-white/15 bg-black/40 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-white/70 backdrop-blur-sm">
+                        {agent.template}
+                      </span>
+                      <span
+                        aria-hidden="true"
                         className="absolute inset-x-0 bottom-0 h-px"
                         style={{ background: `linear-gradient(90deg, transparent, ${agent.color}, transparent)` }}
                       />
@@ -246,18 +267,15 @@ export function AgentWorkbench({
 
                     <div className="flex flex-1 flex-col p-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold">{agent.name}</p>
-                          <p className="truncate text-[10px] text-fg-mute">{agent.role}</p>
-                        </div>
+                        <p className="line-clamp-2 text-[10.5px] leading-relaxed text-fg-soft">{agent.tagline}</p>
                         <span
                           className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[8.5px] uppercase"
                           style={{ color: agent.color, background: `${agent.color}18` }}
+                          title={`Tâche par défaut : ${agent.task}`}
                         >
                           {agent.task}
                         </span>
                       </div>
-                      <p className="mt-1.5 line-clamp-2 text-[10.5px] leading-relaxed text-fg-soft">{agent.tagline}</p>
 
                       <div className="mt-2.5 grid grid-cols-2 gap-1.5">
                         <button
@@ -277,18 +295,28 @@ export function AgentWorkbench({
                           <Hammer size={10} /> Studio
                         </Link>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {agent.tasks.slice(0, 2).map((task) => (
-                          <button
-                            key={task.id}
-                            type="button"
-                            onClick={() => void run(agent, task.id)}
-                            className="rounded border border-line/50 px-1.5 py-0.5 text-[9px] text-fg-mute transition hover:border-line hover:text-fg-soft"
-                            title={task.description}
-                          >
-                            {task.label}
-                          </button>
-                        ))}
+                      <div className="mt-1.5">
+                        <p className="font-mono text-[8px] uppercase tracking-wide text-fg-mute">tâches calculées</p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {agent.tasks.map((task) => (
+                            <button
+                              key={task.id}
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void run(agent, task.id)}
+                              aria-pressed={active && outcome?.task === task.id}
+                              className={cn(
+                                'rounded border px-1.5 py-0.5 text-[9px] transition disabled:opacity-50',
+                                active && outcome?.task === task.id
+                                  ? 'border-spark-cyan/50 bg-spark-cyan/10 text-spark-cyan'
+                                  : 'border-line/50 text-fg-mute hover:border-line hover:text-fg-soft',
+                              )}
+                              title={task.description}
+                            >
+                              {task.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -346,13 +374,24 @@ export function AgentWorkbench({
 
           {outcome ? (
             <>
-              <div className="rounded-lg border border-line/50 bg-ink-950/60 p-2">
-                <p className="flex items-center gap-1 text-[11.5px] font-medium">
-                  {outcome.ok ? <Check size={12} className="text-spark-green" /> : <TriangleAlert size={12} className="text-spark-amber" />}
-                  {outcome.name}
-                  <span className="font-mono text-[9px] text-fg-mute">· {outcome.task}</span>
-                </p>
-                <p className="mt-1 text-[10.5px] leading-relaxed text-fg-soft">{outcome.summary}</p>
+              <div className="flex items-start gap-2 rounded-lg border border-line/50 bg-ink-950/60 p-2">
+                <AgentEmblem
+                  id={outcome.agent}
+                  size={28}
+                  color={byId.get(outcome.agent)?.color}
+                  className="mt-0.5"
+                />
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-1 text-[11.5px] font-medium">
+                    {outcome.ok ? <Check size={12} className="text-spark-green" /> : <TriangleAlert size={12} className="text-spark-amber" />}
+                    {outcome.name}
+                    <span className="font-mono text-[9px] text-fg-mute">· {outcome.role}</span>
+                    <span className="rounded bg-spark-cyan/10 px-1 font-mono text-[8.5px] uppercase text-spark-cyan">
+                      {outcome.task}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[10.5px] leading-relaxed text-fg-soft">{outcome.summary}</p>
+                </div>
               </div>
 
               <dl className="grid grid-cols-2 gap-1">

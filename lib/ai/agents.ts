@@ -1,11 +1,15 @@
 /**
  * Agents IA de Northev Spark.
  *
- * Chaque agent correspond à une des dix tuiles du manuel — ce sont les
- * « travailleurs » qui cherchent le schéma équivalent. Cinq agents sont
- * conversationnels (Théo, Nora, Impeda, Volt, Mentor) et cinq sont des
- * spécialistes de calcul (Équivalence T⇄N, Labo T–N, Transformation de
- * sources, Hub principal, Bobines & impédances).
+ * Onze agents, onze fonctions distinctes — ce sont les « travailleurs » qui
+ * cherchent le schéma équivalent. Chacun possède son emblème
+ * (`components/agents/AgentEmblem.tsx`), son gabarit de montage et ses tâches
+ * réellement calculées (`lib/agents/tasks.ts`) : changer de tâche change le
+ * résultat, pas seulement le libellé.
+ *
+ * Tous sont conversationnels : le calcul est toujours local et déterministe
+ * (`lib/agents/runtime.ts`), un fournisseur de langage ne sert qu'à rédiger
+ * l'explication quand une clé est configurée.
  */
 
 export type AgentId =
@@ -218,13 +222,13 @@ export const AGENTS: AgentDefinition[] = [
     role: 'Auditeur de montage',
     tagline: 'Il refuse de valider une erreur.',
     description:
-      'Volt contrôle la topologie, la cohérence des bornes et les cas limites. Il rédige le rapport de validation et refuse de certifier un montage mal branché.',
+      'Volt contrôle la topologie, la cohérence des bornes et les cas limites sur le pont de Wheatstone déséquilibré. Il rend un verdict — certifié, refusé, en attente — et refuse de certifier un montage mal branché.',
     avatar: '/agents/tiles/transformation-sources.webp',
     color: '#46e6a0',
     accentClass: 'from-spark-green/25 to-spark-cyan/10',
     task: 'verification',
     conversational: true,
-    template: 'bobines-impedances',
+    template: 'pont-wheatstone',
     tasks: [
       { id: 'verification', label: 'Audit du montage', description: 'Topologie, cohérence, cas limites.' },
       { id: 'rapport', label: 'Rapport de validation', description: 'Checklist signée pour l’export.' },

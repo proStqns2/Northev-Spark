@@ -141,12 +141,10 @@ export function Inspector({
             </span>
           </label>
           <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              step="any"
-              className="field"
-              value={rawNumber(selected.value, 10)}
-              onChange={(e) => onChange({ value: Number(e.target.value) })}
+            <NumberInput
+              value={selected.value}
+              onChange={(value) => onChange({ value })}
+              ariaLabel={`Valeur ${unit ? `en ${unit}` : ''}`}
             />
             {isReactive ? (
               <select
@@ -385,14 +383,67 @@ function Field({
   return (
     <label className="block">
       <span className="mb-0.5 block text-[9px] uppercase tracking-wider text-fg-mute">{label}</span>
-      <input
-        type="number"
-        step={step ?? 'any'}
-        className="field px-2 py-1 text-[11px]"
-        value={rawNumber(value, 8)}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
+      <NumberInput value={value} onChange={onChange} className="field px-2 py-1 text-[11px]" ariaLabel={label} />
     </label>
+  );
+}
+
+/**
+ * Champ numérique **tapable**.
+ *
+ * Avant : `value={rawNumber(state, n)}` réécrivait le texte à chaque frappe.
+ * Conséquence : impossible de taper « 4,7 » (le point disparaissait), ni « - »
+ * ni un zéro intermédiaire — le champ semblait figé.
+ *
+ * Ici le texte saisi est conservé tel quel tant que le champ a le focus ; la
+ * valeur n'est transmise que si elle est valide. À la sortie du champ, on
+ * réaffiche la forme canonique.
+ */
+function NumberInput({
+  value,
+  onChange,
+  className,
+  ariaLabel,
+  placeholder,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  className?: string;
+  ariaLabel?: string;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? rawNumber(value, 10);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      spellCheck={false}
+      className={className ?? 'field'}
+      value={shown}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      onChange={(event) => {
+        const typed = event.target.value;
+        setDraft(typed);
+        const normalised = typed.replace(/\s/g, '').replace(',', '.');
+        if (normalised === '' || normalised === '-') return;
+        if (/^-?\d*\.?\d+(e[-+]?\d+)?$/i.test(normalised)) {
+          const parsed = Number(normalised);
+          if (Number.isFinite(parsed)) onChange(parsed);
+        }
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          setDraft(null);
+          event.currentTarget.blur();
+        }
+        if (event.key === 'Escape') setDraft(null);
+      }}
+    />
   );
 }
 

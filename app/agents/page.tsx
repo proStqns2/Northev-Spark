@@ -1,37 +1,52 @@
 import type { Metadata } from 'next';
-import { Sparkles, Zap } from 'lucide-react';
+import { Activity, Sparkles, Zap } from 'lucide-react';
 import { AGENTS } from '@/lib/ai/agents';
 import { providerStatus } from '@/lib/ai/providers';
+import { agentTeaser } from '@/lib/agents/runtime';
 import { AgentWorkbench, ProviderChips, type WorkbenchAgent } from './AgentWorkbench';
 
 export const metadata: Metadata = {
   title: 'Agents IA',
   description:
-    'Les dix agents de Northev Spark : Thévenin série, Norton parallèle, équivalence T⇄N, Thévenin AC, Norton AC, dipôles équivalents, labo T–N, transformation de sources, hub principal et bobines. Chacun s’exécute sur le serveur, sans clé d’API.',
+    'Les onze agents de Northev Spark : Thévenin série, Norton parallèle, équivalence T⇄N, Thévenin AC, Norton AC, dipôles équivalents, labo T–N, transformation de sources, hub principal, bobines, auditeur et mentor. Chacun s’exécute sur le serveur, sans clé d’API.',
 };
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Quatre familles, onze agents — une seule fonction par agent.
+ * L'ordre suit le raisonnement de l'élève : modéliser, passer en sinusoïdal,
+ * mesurer les sources, puis auditer et comprendre.
+ */
 const GROUPES: Array<{ title: string; hint: string; ids: string[] }> = [
   {
-    title: 'Modèles continus',
-    hint: 'Le régime DC : sources, résistances, diviseurs.',
+    title: 'Modèles équivalents',
+    hint: 'Série, parallèle et passerelle T ⇄ N.',
     ids: ['theo', 'nora', 'convert', 'dipoles'],
   },
   {
     title: 'Régime sinusoïdal',
-    hint: 'Impédances complexes, bobines et condensateurs.',
-    ids: ['impeda', 'coils', 'sources'],
+    hint: 'Impédances complexes, bobines et résonance.',
+    ids: ['impeda', 'coils'],
   },
   {
-    title: 'Laboratoire & pilotage',
-    hint: 'Mesures, audit et coordination des agents.',
-    ids: ['lab', 'hub', 'volt', 'mentor'],
+    title: 'Sources & mesure',
+    hint: 'Transformation de sources et banc de mesures.',
+    ids: ['sources', 'lab'],
+  },
+  {
+    title: 'Audit & pédagogie',
+    hint: 'Verdict de montage, méthode et synthèse.',
+    ids: ['volt', 'mentor', 'hub'],
   },
 ];
 
 export default function AgentsPage() {
   const status = providerStatus();
+  /* auto-contrôle : la page prouve à chaque rendu que les onze agents calculent */
+  const checks = AGENTS.map((agent) => ({ agent, teaser: agentTeaser(agent.id) }));
+  const answered = checks.filter((entry) => entry.teaser.headline.length > 0).length;
+  const green = checks.filter((entry) => entry.teaser.ok).length;
   const agents: WorkbenchAgent[] = AGENTS.map((agent) => ({
     id: agent.id,
     name: agent.name,
@@ -54,15 +69,50 @@ export default function AgentsPage() {
           Les agents qui trouvent l’équivalent
         </h1>
         <p className="mt-2 max-w-3xl text-[13.5px] leading-relaxed text-fg-soft">
-          Dix agents spécialisés, chacun avec son emblème : quatre travaillent en régime continu, trois en
-          sinusoïdal, trois forment le laboratoire et le pilotage. Tous s’appuient sur le même solveur nodal ; le
-          modèle de langage ne fait que rédiger l’explication finale — il ne calcule jamais à votre place.
+          Onze agents spécialisés, chacun avec son emblème et sa fonction : quatre construisent le modèle équivalent,
+          deux travaillent en sinusoïdal, deux traitent les sources et la mesure, trois audient et expliquent. Tous
+          s’appuient sur le même solveur nodal ; le modèle de langage ne fait que rédiger l’explication finale — il ne
+          calcule jamais à votre place.
+        </p>
+        <p className="mt-1.5 max-w-3xl text-[11.5px] leading-relaxed text-fg-mute">
+          Chaque bouton de tâche déclenche un calcul différent : superposition, diagnostic, conversion, optimisation,
+          vérification, réduction, procès-verbal, méthode, plan ou quiz. Changer de tâche change le résultat, pas
+          seulement le titre.
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           <span className="chip">
             <Zap size={10} /> {AGENTS.length} agents
           </span>
           <ProviderChips status={status} />
+        </div>
+
+        {/* auto-contrôle rendu côté serveur : chaque point est un agent exécuté ici même */}
+        <div className="panel mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 p-2">
+          <span
+            className={`chip ${
+              answered === checks.length ? 'border-spark-green/40 text-spark-green' : 'border-spark-amber/40 text-spark-amber'
+            }`}
+            title={`Test d’exécution effectué à chaque affichage de la page · ${green} verdict(s) positif(s)`}
+          >
+            <Activity size={10} /> {answered}/{checks.length} agents ont répondu
+          </span>
+          <ul className="flex flex-wrap items-center gap-1">
+            {checks.map(({ agent, teaser }) => (
+              <li key={agent.id}>
+                <span
+                  className="flex items-center gap-1 rounded border border-line/40 px-1.5 py-0.5 text-[9.5px] text-fg-mute"
+                  title={`${agent.name} — ${teaser.headline}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: teaser.ok ? '#46e6a0' : '#ffc266' }}
+                  />
+                  {agent.name}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         <p className="mt-2 max-w-3xl text-[11.5px] leading-relaxed text-fg-mute">
@@ -74,8 +124,12 @@ export default function AgentsPage() {
       <AgentWorkbench agents={agents} groups={GROUPES} />
 
       {/* ------------------------------------------------------ explication */}
-      <section className="panel mt-8 grid gap-3 p-4 sm:grid-cols-3">
+      <section className="panel mt-8 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
+          {
+            title: 'Une tâche = un calcul',
+            body: 'lib/agents/tasks.ts recalcule pour chaque tâche : superposition source par source, diagnostic topologique, procès-verbal, quiz corrigé. Le bouton ne change plus seulement le libellé.',
+          },
           {
             title: 'Le solveur d’abord',
             body: 'Chaque agent lit U_th, Z_th et I_N produits par l’analyse nodale modifiée. Aucune valeur n’est inventée par un modèle de langage.',

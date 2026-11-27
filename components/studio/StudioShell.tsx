@@ -38,6 +38,7 @@ import { SetupGuide } from './SetupGuide';
 import { GeminiHelp } from './GeminiHelp';
 import { Inspector } from './Inspector';
 import { ResultsPanel } from './ResultsPanel';
+import { CodePanel } from './editor/CodePanel';
 import { useStudio } from '@/hooks/useStudio';
 import { useMultiTabSync } from '@/hooks/useMultiTab';
 import { AGENTS } from '@/lib/ai/agents';
@@ -104,6 +105,8 @@ export function StudioShell({
 }: Props) {
   const studio = useStudio(initialDoc);
   const [boxMode, setBoxMode] = useState<'values' | 'build' | 'compact'>('values');
+  /** panneau de droite : réglages du dipôle sélectionné ou code du montage */
+  const [asideMode, setAsideMode] = useState<'reglages' | 'code'>('reglages');
   const [projectId, setProjectId] = useState<string | undefined>(initialProjectId);
   const { doc, setDoc, selected, selectedId, setSelectedId } = studio;
   const { equivalent, solution } = useCircuitEngine(doc);
@@ -898,18 +901,55 @@ export function StudioShell({
           )}
         >
           {inspectorOpen ? (
-            <div className="relative h-full">
-              <Inspector
-                doc={doc}
-                selected={selected}
-                reading={selected && solution.ok ? solution.readings[selected.id] : undefined}
-                onChange={studio.patchSelected}
-                onDelete={studio.removeSelected}
-                onDuplicate={studio.duplicateSelected}
-                onRotate={studio.rotateSelected}
-                onFlip={studio.flipSelected}
-                digits={4}
-              />
+            <div className="relative flex h-full flex-col">
+              <div className="flex shrink-0 gap-1 border-b border-line/50 p-1.5">
+                {(
+                  [
+                    ['reglages', 'Réglages'],
+                    ['code', 'Code'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setAsideMode(id)}
+                    className={cn(
+                      'flex-1 rounded-md px-1 py-1 text-[10px] font-medium transition',
+                      asideMode === id ? 'bg-spark-cyan/12 text-spark-cyan' : 'text-fg-mute hover:text-fg-soft',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                {asideMode === 'code' ? (
+                  <CodePanel
+                    doc={doc}
+                    summary={
+                      equivalent.ok
+                        ? {
+                            vth: abs(equivalent.vth),
+                            rth: abs(equivalent.rth),
+                            inorton: abs(equivalent.inorton),
+                          }
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <Inspector
+                    doc={doc}
+                    selected={selected}
+                    reading={selected && solution.ok ? solution.readings[selected.id] : undefined}
+                    onChange={studio.patchSelected}
+                    onDelete={studio.removeSelected}
+                    onDuplicate={studio.duplicateSelected}
+                    onRotate={studio.rotateSelected}
+                    onFlip={studio.flipSelected}
+                    digits={4}
+                  />
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setInspectorOpen(false)}

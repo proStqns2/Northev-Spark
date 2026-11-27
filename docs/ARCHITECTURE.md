@@ -139,3 +139,50 @@ client B ─┴──► PATCH /api/rooms/:code
 Vérifications : `lib/collab/merge.test.ts`, `lib/collab/locks.test.ts` (théorie)
 et `lib/db/rooms.collab.test.ts` (le vrai dépôt, deux auteurs concurrents,
 verrou refusé, restauration).
+
+## 6. Agents : une tâche = un calcul
+
+Le défaut historique de `/agents` était le suivant : onze agents, mais **les
+tâches n'étaient qu'un libellé**. Choisir « Superposition » ou « Quiz » sur le
+même agent renvoyait exactement la même sortie. Trois couches corrigent cela.
+
+```
+lib/ai/agents.ts        définition : id, rôle, emblème, gabarit, tâches
+        │
+        ▼
+lib/agents/runtime.ts   runner de base : modèle équivalent vu de A–B
+        │  mergeTask(base, taskOverlay(...))
+        ▼
+lib/agents/tasks.ts     calcul propre à la tâche choisie
+```
+
+- **`lib/agents/tasks.ts`** implémente dix tâches : `superposition` (une source
+  active à la fois, somme comparée à U_th), `diagnostic` (`diagnose()`),
+  `conversion` (I_N · R_N vs U_th), `optimisation` (paires série / parallèle
+  détectées dans le montage), `verification` (U_th, I_cc, R_th = U_th / I_cc),
+  `reduction` (réduction + admittance), `rapport` (procès-verbal par branche),
+  `pedagogie` (méthode en 7 étapes chiffrées), `plan` (ordre des lois selon le
+  régime) et `quiz` (4 questions corrigées sur les valeurs réelles).
+  La tâche `equivalence` reste servie par le runner de base.
+- **Rien ne se perd** : quand une tâche remplace le résumé de l'agent, la
+  synthèse d'origine est conservée en étape « Lecture de l'agent »
+  (`mergeTask`).
+- **Identité visuelle** : `lib/ai/emblems.ts` liste les onze emblèmes et
+  `components/agents/AgentEmblem.tsx` les dessine en SVG (aucun PNG). Chaque
+  agent a donc un emblème distinct — plus de logo emprunté à un voisin — et le
+  gabarit de montage ouvert par défaut lui est propre
+  (`thevenin-serie`, `norton-parallele`, `equivalence-tn`, `thevenin-ac-rl`,
+  `norton-ac-rl`, `dipoles-equivalents`, `labo-calcul-tn`,
+  `transformation-sources`, `hub-equivalence`, `pont-wheatstone`,
+  `superposition`).
+- **Volt n'est plus Mentor** : `volt` a son propre runner (`auditeur`) — quatre
+  contrôles puis un verdict `certifié` / `refusé` / `en attente` ; `mentor`
+  explique la méthode. Deux agents, deux fonctions.
+- **Vérification** : `lib/agents/tasks.test.ts` exécute **chaque agent sur
+  chacune de ses tâches**, exige un résumé, au moins deux grandeurs et deux
+  étapes, et vérifie que deux tâches différentes ne rendent pas le même
+  résumé. Il contrôle aussi que les onze emblèmes existent, que les
+  identifiants sont uniques et que chaque gabarit se charge. `npm run
+  check:agents` couvre en plus la chaîne HTTP Next ⇄ Express. La page
+  `/agents` affiche enfin un auto-contrôle : `n/11 agents ont répondu`, calculé
+  à chaque rendu.

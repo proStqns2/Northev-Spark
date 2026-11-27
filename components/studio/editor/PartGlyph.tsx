@@ -24,7 +24,8 @@ export interface GlyphProps {
   value?: string;
 }
 
-const STROKE = 2.1;
+/** épaisseur apparente à l'écran : `non-scaling-stroke` l'empêche de doubler au zoom */
+const STROKE = 2.6;
 
 export function PartGlyph({ kind, span, color = '#38e1e6', selected = false, ghost = false, closed = true, ac = false }: GlyphProps) {
   const half = Math.max(span / 2, 18);
@@ -38,6 +39,7 @@ export function PartGlyph({ kind, span, color = '#38e1e6', selected = false, gho
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
     opacity,
+    vectorEffect: 'non-scaling-stroke' as const,
     style: selected ? { filter: `drop-shadow(0 0 5px ${color})` } : undefined,
   };
 
