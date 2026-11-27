@@ -10,6 +10,8 @@ import {
   StoredUser,
   transaction,
 } from './store';
+import { diffDocs, mergeDocs, sanitizeDoc, type MergeConflict, type MergeStats } from '@/lib/collab/merge';
+import { acquireLock, expireLocks, releaseAll, releaseLock, renewLocks, type LockMap } from '@/lib/collab/locks';
 import { hashPassword, inviteCode, sha256, verifyPassword } from '@/lib/auth/crypto';
 import { sessionTtlMs } from '@/lib/auth/config';
 import type { SessionUser } from '@/lib/auth/session';
@@ -402,6 +404,8 @@ export async function createRoom(input: {
     messages: [],
     closed: false,
     projectId: input.projectId,
+    // la révision de départ sert de base aux premières fusions
+    history: [{ revision: 1, doc: input.doc, at: now, authorName: input.owner.name, summary: 'montage initial' }],
   };
   // l'hôte est présent dès l'ouverture de l'atelier
   room.presence[input.owner.id] = {
@@ -518,7 +522,9 @@ function colorFor(seed: string): string {
 
 export async function touchRoom(
   code: string,
-  patch: Partial<Pick<StoredRoom, 'doc' | 'name' | 'presence' | 'messages' | 'revision'>>,
+  patch: Partial<
+    Pick<StoredRoom, 'doc' | 'name' | 'presence' | 'messages' | 'revision' | 'history' | 'locks' | 'typing'>
+  >,
 ): Promise<StoredRoom | null> {
   let updated: StoredRoom | null = null;
   await transaction((db) => {
@@ -799,4 +805,284 @@ export async function attachCircuitsToProject(
     }
   });
   return moved;
+}
+
+
+/* ------------------------- multiwork : fusion & verrous ------------------------- */
+
+export interface RoomWriteResult {
+  ok: boolean;
+  error?: string;
+  revision?: number;
+  doc?: unknown;
+  /** fusible : ce qui a été cumulé */
+  stats?: MergeStats;
+  /** collisions réelles, à afficher dans l'atelier */
+  conflicts?: MergeConflict[];
+  /** vrai quand la fusion a dû réécrire le document client (il doit se réaligner) */
+  merged?: boolean;
+  authorName?: string;
+  updatedAt?: string;
+}
+
+const HISTORY_LIMIT = 10;
+
+/**
+ * Écriture collaborative : le document envoyé est **fusionné** avec l'état
+ * courant, jamais substitué. `baseRevision` indique la version que le client
+ * connaissait ; le serveur retrouve le document correspondant dans l'historique
+ * et fait une fusion à trois branches (`lib/collab/merge`).
+ *
+ * Un client qui ne fournit pas `baseRevision` est traité comme « à jour » :
+ * c'est le comportement historique (dernier écrivain), conservé pour ne pas
+ * casser les anciens clients.
+ */
+export async function applyRoomDoc(
+  code: string,
+  input: { doc: unknown; baseRevision?: number; author: SessionUser },
+): Promise<RoomWriteResult> {
+  const mine = sanitizeDoc(input.doc as never);
+  let result: RoomWriteResult = { ok: false, error: 'Atelier introuvable ou fermé.' };
+
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const theirs = sanitizeDoc(room.doc as never);
+    const history = room.history ?? [];
+    const base =
+      input.baseRevision === undefined
+        ? null
+        : history.find((entry) => entry.revision === input.baseRevision)?.doc ?? null;
+
+    const merged = mergeDocs({
+      base: base ? sanitizeDoc(base as never) : null,
+      mine,
+      theirs,
+      actor: input.author.name,
+    });
+
+    const previousRevision = room.revision;
+    const nextRevision = previousRevision + 1;
+    const at = new Date().toISOString();
+    const diff = diffDocs(theirs, merged.doc);
+    const summary = [
+      diff.added.length ? `+${diff.added.length}` : '',
+      diff.removed.length ? `−${diff.removed.length}` : '',
+      diff.updated.length ? `~${diff.updated.length}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (merged.changed) {
+      room.doc = merged.doc;
+      room.revision = nextRevision;
+      room.updatedAt = at;
+      // instantané **de la nouvelle révision** : c'est la base du prochain arrivant
+      room.history = [
+        ...history.filter((entry) => entry.revision !== nextRevision),
+        {
+          revision: nextRevision,
+          doc: merged.doc,
+          at,
+          authorName: input.author.name,
+          summary,
+        },
+      ].slice(-HISTORY_LIMIT);
+    }
+
+    room.presence[input.author.id] = {
+      ...room.presence[input.author.id],
+      id: input.author.id,
+      name: input.author.name,
+      avatar: input.author.avatar,
+      color: room.presence[input.author.id]?.color ?? colorFor(input.author.id),
+      at,
+      seenAt: Date.now(),
+      activity: summary ? `modifie le montage (${summary})` : 'regarde le montage',
+    };
+    room.typing = Object.fromEntries(
+      Object.entries(room.typing ?? {}).filter(([id, entry]) => id !== input.author.id && Date.now() - entry.at < 6_000),
+    );
+
+    result = {
+      ok: true,
+      revision: room.revision,
+      doc: room.doc,
+      stats: merged.stats,
+      conflicts: merged.conflicts,
+      merged: merged.changed && JSON.stringify(merged.doc) !== JSON.stringify(mine),
+      authorName: input.author.name,
+      updatedAt: room.updatedAt,
+    };
+  });
+
+  const room = await findRoom(code);
+  if (room) void pushRoom(room).catch(() => undefined);
+  return result;
+}
+
+/** Historique des versions (pour la frise et la restauration). */
+export async function roomHistory(code: string): Promise<Array<{ revision: number; at: string; authorName: string; summary: string }>> {
+  const room = await findRoom(code);
+  if (!room) return [];
+  const entries = (room.history ?? []).map((entry) => ({
+    revision: entry.revision,
+    at: entry.at,
+    authorName: entry.authorName,
+    summary: entry.revision === room.revision ? 'version courante' : entry.summary,
+  }));
+  if (!entries.some((entry) => entry.revision === room.revision)) {
+    entries.push({
+      revision: room.revision,
+      at: room.updatedAt,
+      authorName: room.ownerName,
+      summary: 'version courante',
+    });
+  }
+  return entries.sort((a, b) => b.revision - a.revision);
+}
+
+/** Restaure une version antérieure (nouvelle révision, pas de réécriture d’historique). */
+export async function restoreRoomRevision(
+  code: string,
+  revision: number,
+  author: SessionUser,
+): Promise<RoomWriteResult> {
+  let result: RoomWriteResult = { ok: false, error: 'Version introuvable.' };
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const entry = (room.history ?? []).find((item) => item.revision === revision);
+    if (!entry) return;
+    const restored = sanitizeDoc(entry.doc as never);
+    const at = new Date().toISOString();
+    const nextRevision = room.revision + 1;
+    room.doc = restored;
+    room.revision = nextRevision;
+    room.updatedAt = at;
+    room.history = [
+      ...(room.history ?? []).filter((item) => item.revision !== nextRevision),
+      { revision: nextRevision, doc: restored, at, authorName: author.name, summary: `restauration de la rév. ${revision}` },
+    ].slice(-HISTORY_LIMIT);
+    room.messages = [
+      ...room.messages,
+      {
+        id: `sys-${Date.now().toString(36)}`,
+        authorId: author.id,
+        authorName: author.name,
+        text: `a restauré la version ${revision}.`,
+        at,
+      },
+    ].slice(-80);
+    result = { ok: true, revision: room.revision, doc: room.doc, stats: { added: 0, removed: 0, updated: 0, docFields: 0 }, conflicts: [] };
+  });
+  const room = await findRoom(code);
+  if (room) void pushRoom(room).catch(() => undefined);
+  return result;
+}
+
+/** Prend (ou prolonge) le verrou d’un dipôle. */
+export async function lockComponent(
+  code: string,
+  componentId: string,
+  user: SessionUser,
+): Promise<{ granted: boolean; holder?: { name: string; componentId: string }; locks: LockMap; ttlMs: number }> {
+  let outcome = { granted: false, locks: {} as LockMap, ttlMs: 0, holder: undefined as undefined | { name: string; componentId: string } };
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const now = Date.now();
+    const acquired = acquireLock(room.locks ?? {}, {
+      componentId,
+      userId: user.id,
+      name: user.name,
+      color: room.presence[user.id]?.color ?? colorFor(user.id),
+    }, now);
+    room.locks = acquired.locks;
+    outcome = {
+      granted: acquired.ok,
+      locks: acquired.locks,
+      ttlMs: acquired.ok ? Math.max(0, (acquired.locks[componentId]?.expiresAt ?? now) - now) : 0,
+      holder: acquired.holder ? { name: acquired.holder.name, componentId: acquired.holder.componentId } : undefined,
+    };
+  });
+  return outcome;
+}
+
+/** Libère un dipôle, ou tous ceux de l’utilisateur. */
+export async function unlockComponents(code: string, user: SessionUser, componentId?: string): Promise<LockMap> {
+  let locks: LockMap = {};
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const current = expireLocks(room.locks ?? {}, Date.now());
+    room.locks = componentId ? releaseLock(current, componentId, user.id) : releaseAll(current, user.id);
+    locks = room.locks;
+  });
+  return locks;
+}
+
+/** Prolonge tous les verrous de l’utilisateur (battement client). */
+export async function renewRoomLocks(code: string, user: SessionUser): Promise<LockMap> {
+  let locks: LockMap = {};
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    room.locks = renewLocks(expireLocks(room.locks ?? {}, Date.now()), user.id, Date.now());
+    locks = room.locks;
+  });
+  return locks;
+}
+
+/** État volatil de l’atelier : verrous + saisies en cours. */
+export async function roomLiveState(
+  code: string,
+): Promise<{ locks: LockMap; typing: Array<{ id: string; name: string }> }> {
+  const room = await findRoom(code);
+  if (!room) return { locks: {}, typing: [] };
+  const now = Date.now();
+  return {
+    locks: expireLocks(room.locks ?? {}, now),
+    typing: Object.entries(room.typing ?? {})
+      .filter(([, entry]) => now - entry.at < 6_000)
+      .map(([id, entry]) => ({ id, name: entry.name })),
+  };
+}
+
+/** « X est en train d’écrire… » — volatile, expire en 6 s. */
+export async function setRoomTyping(code: string, user: SessionUser, active: boolean): Promise<void> {
+  await mutateVolatile((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const typing = { ...(room.typing ?? {}) };
+    if (active) typing[user.id] = { name: user.name, at: Date.now() };
+    else delete typing[user.id];
+    room.typing = Object.fromEntries(Object.entries(typing).filter(([, entry]) => Date.now() - entry.at < 6_000));
+  });
+}
+
+/** Réaction emoji sur un message. */
+export async function reactToMessage(
+  code: string,
+  user: SessionUser,
+  messageId: string,
+  emoji: string,
+): Promise<boolean> {
+  let done = false;
+  await transaction((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return;
+    const message = room.messages.find((m) => m.id === messageId);
+    if (!message) return;
+    const reactions = { ...(message.reactions ?? {}) };
+    const authors = new Set(reactions[emoji] ?? []);
+    if (authors.has(user.id)) authors.delete(user.id);
+    else authors.add(user.id);
+    if (authors.size) reactions[emoji] = [...authors];
+    else delete reactions[emoji];
+    message.reactions = reactions;
+    room.updatedAt = new Date().toISOString();
+    done = true;
+  });
+  return done;
 }

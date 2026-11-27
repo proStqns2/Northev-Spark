@@ -2,15 +2,23 @@ import type { ApiRoute } from '../http';
 
 import { z } from 'zod';
 import {
+  applyRoomDoc,
   createCircuit,
   createRoom,
-  ensurePresence,
   findRoom,
   joinRoom,
   leaveRoom,
   listRoomsFor,
   livePresence,
+  lockComponent,
+  reactToMessage,
+  renewRoomLocks,
+  restoreRoomRevision,
+  roomHistory,
+  roomLiveState,
+  setRoomTyping,
   touchRoom,
+  unlockComponents,
   updateCursor,
 } from '@/lib/db/repo';
 import { publishRoomEvent } from '@/lib/db/supabase';
@@ -20,6 +28,20 @@ import type { CursorState, PresenceRecord } from '@/lib/db/store';
 import { cachedEquivalent } from '@/lib/cache';
 import { bodyOf, currentUser, fail, NO_STORE } from '../helpers';
 import { CURSOR_TTL, openRoomStream, TICK_MS } from '../roomStream';
+
+const lockBodySchema = z.object({
+  componentId: z.string().min(1).max(64),
+  action: z.enum(['acquire', 'release', 'release-all', 'renew']),
+});
+
+const typingBodySchema = z.object({ active: z.boolean() });
+
+const reactBodySchema = z.object({
+  messageId: z.string().min(1).max(64),
+  emoji: z.string().min(1).max(8),
+});
+
+const restoreBodySchema = z.object({ revision: z.number().int().min(0) });
 
 const cursorBodySchema = z.object({
   x: z.number().finite().optional(),
@@ -141,6 +163,7 @@ export const roomRoutes: ApiRoute[] = [
       return fail(reply, 404, 'Atelier introuvable ou fermé.', { code: 'room_not_found' });
     }
     const presence = livePresence(room);
+    const live = await roomLiveState(code);
 
     if (isPoll) {
       if (user) {
@@ -171,6 +194,8 @@ export const roomRoutes: ApiRoute[] = [
         ownerName: room.ownerName,
         circuitId: room.circuitId,
         projectId: room.projectId,
+        locks: live.locks,
+        typing: live.typing,
       });
     }
 
@@ -185,6 +210,8 @@ export const roomRoutes: ApiRoute[] = [
       ownerId: room.ownerId,
       ownerName: room.ownerName,
       circuitId: room.circuitId,
+      locks: live.locks,
+      typing: live.typing,
     });
   }],
 
@@ -192,53 +219,177 @@ export const roomRoutes: ApiRoute[] = [
     const { code } = request.params as { code: string };
     const user = await currentUser(request);
     if (!user) return fail(reply, 401, 'Non authentifié.');
-    const room = await findRoom(code);
-    if (!room) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    const exists = await findRoom(code);
+    if (!exists) return fail(reply, 404, 'Atelier introuvable ou fermé.');
     const parsed = roomPatchSchema.safeParse(bodyOf(request));
     if (!parsed.success) {
       return fail(reply, 422, parsed.error.issues[0]?.message ?? 'Données invalides.');
     }
+    const doc = parsed.data.doc as CircuitDoc | undefined;
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
 
-    const messages = [...room.messages];
-    if (parsed.data.message) {
-      messages.push({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        authorId: user.id,
-        authorName: user.name,
-        text: parsed.data.message,
-        at: new Date().toISOString(),
+    // 1. le document passe par la fusion à trois branches : jamais d'écrasement
+    let write: Awaited<ReturnType<typeof applyRoomDoc>> | null = null;
+    if (doc) {
+      write = await applyRoomDoc(code, {
+        doc,
+        baseRevision: parsed.data.baseRevision,
+        author: user,
       });
+      if (!write.ok) return fail(reply, 409, write.error ?? 'Écriture refusée.');
+      void publishRoomEvent({
+        code,
+        kind: 'doc',
+        userId: user.id,
+        data: { revision: write.revision, author: user.name, stats: write.stats },
+      }).catch(() => undefined);
     }
 
-    const doc = parsed.data.doc as CircuitDoc | undefined;
-    const updated = await touchRoom(code, {
-      doc: doc ?? room.doc,
-      name: parsed.data.name ?? room.name,
-      messages: messages.slice(-80),
-      revision: room.revision + 1,
-      presence: {
-        ...room.presence,
-        [user.id]: {
-          ...room.presence[user.id],
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar,
-          color: room.presence[user.id]?.color ?? '#38e1e6',
+    // 2. le reste (nom, message) ne touche pas à la révision : discuter ne doit
+    //    pas faire croire à un nouveau montage
+    const room = await findRoom(code);
+    if (!room) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    if (parsed.data.name || parsed.data.message) {
+      const messages = [...room.messages];
+      if (parsed.data.message) {
+        messages.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          authorId: user.id,
+          authorName: user.name,
+          text: parsed.data.message,
           at: new Date().toISOString(),
-          seenAt: Date.now(),
+        });
+      }
+      await touchRoom(code, {
+        name: parsed.data.name ?? room.name,
+        messages: messages.slice(-80),
+        presence: {
+          ...room.presence,
+          [user.id]: {
+            ...room.presence[user.id],
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+            color: room.presence[user.id]?.color ?? '#38e1e6',
+            at: new Date().toISOString(),
+            seenAt: Date.now(),
+          },
         },
-      },
-    });
+      });
+      if (parsed.data.message) {
+        void publishRoomEvent({
+          code,
+          kind: 'chat',
+          userId: user.id,
+          data: { text: parsed.data.message.slice(0, 120) },
+        }).catch(() => undefined);
+      }
+    }
 
+    const live = await roomLiveState(code);
+    return reply.send({
+      revision: write?.revision ?? room.revision,
+      savedAt: write?.updatedAt ?? room.updatedAt,
+      /** document réellement stocké : le client s'aligne dessus */
+      doc: write?.doc,
+      merged: Boolean(write?.merged),
+      stats: write?.stats,
+      conflicts: write?.conflicts ?? [],
+      locks: live.locks,
+    });
+  }],
+
+  // ---- verrous souples par dipôle
+  ['POST', '/api/rooms/:code/locks', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = lockBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Demande de verrou invalide.');
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+
+    if (parsed.data.action === 'renew') {
+      return reply.send({ ok: true, locks: await renewRoomLocks(code, user) });
+    }
+    if (parsed.data.action === 'release') {
+      const locks = await unlockComponents(code, user, parsed.data.componentId);
+      void publishRoomEvent({ code, kind: 'lock', userId: user.id, data: { locks } }).catch(() => undefined);
+      return reply.send({ ok: true, locks });
+    }
+    if (parsed.data.action === 'release-all') {
+      const locks = await unlockComponents(code, user);
+      void publishRoomEvent({ code, kind: 'lock', userId: user.id, data: { locks } }).catch(() => undefined);
+      return reply.send({ ok: true, locks });
+    }
+
+    const result = await lockComponent(code, parsed.data.componentId, user);
+    void publishRoomEvent({ code, kind: 'lock', userId: user.id, data: { locks: result.locks } }).catch(
+      () => undefined,
+    );
+    if (!result.granted) {
+      return reply.code(409).send({
+        error: `${result.holder?.name ?? 'Quelqu’un'} travaille déjà sur ce dipôle.`,
+        granted: false,
+        holder: result.holder,
+        locks: result.locks,
+      });
+    }
+    return reply.send({ granted: true, locks: result.locks, ttlMs: result.ttlMs });
+  }],
+
+  // ---- « en train d’écrire… »
+  ['POST', '/api/rooms/:code/typing', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = typingBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Signal de saisie invalide.');
+    await setRoomTyping(code, user, parsed.data.active);
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ ok: true });
+  }],
+
+  // ---- frise des versions + restauration
+  ['GET', '/api/rooms/:code/history', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const room = await findRoom(code);
+    if (!room) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ revision: room.revision, versions: await roomHistory(code) });
+  }],
+
+  ['POST', '/api/rooms/:code/history', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = restoreBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Version invalide.');
+    const result = await restoreRoomRevision(code, parsed.data.revision, user);
+    if (!result.ok) return fail(reply, 404, result.error ?? 'Version introuvable.');
     void publishRoomEvent({
       code,
-      kind: doc ? 'doc' : 'chat',
+      kind: 'doc',
       userId: user.id,
-      data: { revision: updated?.revision },
+      data: { revision: result.revision, restored: parsed.data.revision },
     }).catch(() => undefined);
-
     reply.header('Cache-Control', NO_STORE['Cache-Control']);
-    return reply.send({ revision: updated?.revision ?? room.revision + 1, savedAt: updated?.updatedAt });
+    return reply.send({ ok: true, revision: result.revision, doc: result.doc });
+  }],
+
+  // ---- réactions sur les messages
+  ['POST', '/api/rooms/:code/react', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = reactBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Réaction invalide.');
+    const ok = await reactToMessage(code, user, parsed.data.messageId, parsed.data.emoji);
+    if (!ok) return fail(reply, 404, 'Message introuvable.');
+    const room = await findRoom(code);
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ ok: true, messages: room?.messages.slice(-40) ?? [] });
   }],
 
   ['DELETE', '/api/rooms/:code', async (request, reply) => {

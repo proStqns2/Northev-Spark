@@ -97,3 +97,45 @@ calcul → annulation.
 | Pas de base obligatoire | Le site doit démarrer sans service externe |
 | IA désactivée par défaut | Elle ne doit jamais conditionner l'inscription ou le dessin |
 | Tests sans navigateur | L'environnement n'a pas de Chromium ; les tests jsdom couvrent les gestes |
+
+## 5. Collaboration concurrente (Multiwork)
+
+Le point faible historique était `PATCH /api/rooms/:code` : il remplaçait le
+document entier, donc le dernier écrivain effaçait les autres. Le correctif ne
+change pas de pile (toujours Next.js + SSE) ; il change la **nature de
+l'écriture**.
+
+```
+client A ─┐  { doc, baseRevision }
+client B ─┴──► PATCH /api/rooms/:code
+                    │
+                    ├── base  = historique[baseRevision]     (lib/collab/merge)
+                    ├── mine  = document envoyé
+                    ├── theirs= document stocké
+                    └── merged = fusion à trois branches
+                                  ├── dipôles : par identifiant
+                                  ├── champs de doc : un par un
+                                  └── conflits typés (suppression, dipôle, champ)
+```
+
+- **Aucune écriture ne remplace** : le résultat est toujours un cumul. Une
+  suppression concurrente d'une modification est signalée (`field:'suppression'`),
+  une collision sur le même dipôle aussi — le serveur garde sa version et la
+  réponse contient `merged:true` pour que le client se réaligne.
+- **Base = instantané de révision.** `StoredRoom.history` garde les 10
+  dernières versions ; `createRoom` enregistre la révision 1. Sans base
+  (client ancien format), la fusion fait une union : rien n'est supprimé.
+- **Verrous souples** (`lib/collab/locks.ts`) : TTL 15 s, réentrants,
+  renouvelés par battement de 8 s, relâchés au départ (`pagehide`). Un second
+  auteur reçoit `409` avec le nom du titulaire ; l'écriture reste possible,
+  c'est le serveur qui arbitre.
+- **Temps réel** : le flux SSE ajoute `locks` et `typing`, et l'événement
+  `revision` porte le document fusionné — plus de re-sondage après écriture.
+- **Chat** : discuter n'incrémente plus la révision (seul le montage le fait),
+  donc un message ne déclenche plus de rechargement de document.
+- **Frise** : `GET/POST /api/rooms/:code/history` liste et restaure une
+  version ; restaurer crée une nouvelle révision, rien n'est perdu.
+
+Vérifications : `lib/collab/merge.test.ts`, `lib/collab/locks.test.ts` (théorie)
+et `lib/db/rooms.collab.test.ts` (le vrai dépôt, deux auteurs concurrents,
+verrou refusé, restauration).

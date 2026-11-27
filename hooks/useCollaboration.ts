@@ -32,21 +32,66 @@ export interface LiveMessage {
   authorName: string;
   text: string;
   at: string;
+  reactions?: Record<string, string[]>;
 }
 
+/** Verrou souple posé sur un dipôle par un collaborateur. */
+export interface LiveLock {
+  componentId: string;
+  userId: string;
+  name: string;
+  color: string;
+  since: number;
+  ttlMs: number;
+}
+
+export interface LiveConflict {
+  /** `suppression` | `dipôle` | champ de document */
+  field: string;
+  componentId?: string;
+  message: string;
+  at: number;
+  author?: string;
+}
+
+export interface LiveVersion {
+  revision: number;
+  at: string;
+  authorName: string;
+  summary: string;
+}
+
+export interface DocPushResult {
+  ok: boolean;
+  revision: number;
+  merged: boolean;
+  stats?: { added: number; removed: number; updated: number; docFields: number };
+  conflicts: LiveConflict[];
+  error?: string;
+}
+
+const EMPTY_STATS = { added: 0, removed: 0, updated: 0, docFields: 0 };
+
 /**
- * Présence temps réel d'un atelier.
- * - flux SSE pour recevoir curseurs, présence, révisions et chat ;
- * - publication du curseur local throttle à ~10 Hz (le serveur ne garde rien) ;
- * - repli automatique par interrogation si le flux tombe.
+ * Présence temps réel et **écriture sans écrasement** d'un atelier.
+ *
+ * - flux SSE (`presence`, `cursors`, `revision`, `chat`, `locks`, `typing`) ;
+ * - publication du curseur locale ~10 Hz ;
+ * - `pushDoc` envoie la **base** (révision connue) et laisse le serveur faire
+ *   une fusion à trois branches : deux personnes peuvent modifier le même
+ *   montage sans que l'une perde le travail de l'autre ;
+ * - verrous souples par dipôle, renouvelés par battement, relâchés au départ ;
+ * - repli par interrogation si le flux tombe.
  */
 export function useCollaboration(options: {
   code: string | null;
   enabled: boolean;
   localId: string;
   onRemoteDoc?: (doc: CircuitDoc, meta: { revision: number; author?: string }) => void;
+  /** appelé après une fusion qui a dû réécrire le document local */
+  onMerged?: (result: DocPushResult) => void;
 }) {
-  const { code, enabled, localId, onRemoteDoc } = options;
+  const { code, enabled, localId, onRemoteDoc, onMerged } = options;
 
   const [connected, setConnected] = useState(false);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
@@ -55,6 +100,10 @@ export function useCollaboration(options: {
   const [revision, setRevision] = useState(0);
   const [transport, setTransport] = useState<'sse' | 'poll' | 'offline'>('offline');
   const [lastAuthor, setLastAuthor] = useState<string | undefined>(undefined);
+  const [locks, setLocks] = useState<LiveLock[]>([]);
+  const [typing, setTyping] = useState<Array<{ id: string; name: string }>>([]);
+  const [conflicts, setConflicts] = useState<LiveConflict[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const sourceRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -62,11 +111,32 @@ export function useCollaboration(options: {
   const cursorPayload = useRef<Record<string, unknown> | null>(null);
   const lastSent = useRef(0);
   const onRemoteDocRef = useRef(onRemoteDoc);
+  const onMergedRef = useRef(onMerged);
   const revisionRef = useRef(0);
+  /** document serveur connu : la base de la prochaine fusion */
+  const baseDocRef = useRef<CircuitDoc | null>(null);
+  /** écritures en vol : on ne double jamais une requête, on garde la dernière */
+  const pushingRef = useRef(false);
+  const queuedRef = useRef<CircuitDoc | null>(null);
+  const typingSent = useRef(0);
+  const lastTypingRef = useRef(false);
 
   useEffect(() => {
     onRemoteDocRef.current = onRemoteDoc;
-  }, [onRemoteDoc]);
+    onMergedRef.current = onMerged;
+  }, [onRemoteDoc, onMerged]);
+
+  /** Aligne la base localement (après un chargement de salle). */
+  const setBaseline = useCallback((doc: CircuitDoc | null, rev: number) => {
+    baseDocRef.current = doc;
+    revisionRef.current = rev;
+    setRevision(rev);
+  }, []);
+
+  const rememberLocks = useCallback((next: LiveLock[] | undefined) => {
+    if (!next) return;
+    setLocks(next);
+  }, []);
 
   /* ------------------------------------------------------- publication curseur */
   const flushCursor = useCallback(async () => {
@@ -119,15 +189,22 @@ export function useCollaboration(options: {
       setTransport('poll');
       pollRef.current = setInterval(async () => {
         try {
-          const response = await fetch(`/api/rooms/${code}`, { cache: 'no-store' });
+          const response = await fetch(`/api/rooms/${code}?rev=${revisionRef.current}`, {
+            cache: 'no-store',
+          });
           if (!response.ok) return;
           const payload = await response.json();
           setConnected(true);
           setParticipants(payload.participants ?? []);
+          rememberLocks(payload.locks);
+          setTyping(payload.typing ?? []);
           if (payload.revision > revisionRef.current) {
             revisionRef.current = payload.revision;
             setRevision(payload.revision);
-            onRemoteDocRef.current?.(payload.doc as CircuitDoc, { revision: payload.revision });
+            if (payload.doc) {
+              baseDocRef.current = payload.doc as CircuitDoc;
+              onRemoteDocRef.current?.(payload.doc as CircuitDoc, { revision: payload.revision });
+            }
           }
           if (payload.messages?.length) setMessages(payload.messages);
         } catch {
@@ -165,20 +242,39 @@ export function useCollaboration(options: {
       setCursors(data.cursors ?? []);
     });
 
+    source.addEventListener('locks', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { locks: LiveLock[] };
+      rememberLocks(data.locks);
+    });
+
+    source.addEventListener('typing', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { typing: Array<{ id: string; name: string }> };
+      setTyping(data.typing ?? []);
+    });
+
     source.addEventListener('revision', (event) => {
       const data = JSON.parse((event as MessageEvent).data) as {
         revision: number;
         author?: string;
+        doc?: CircuitDoc;
+        locks?: LiveLock[];
       };
+      rememberLocks(data.locks);
       if (data.revision === revisionRef.current) return;
       revisionRef.current = data.revision;
       setRevision(data.revision);
       setLastAuthor(data.author);
+      if (data.doc) {
+        baseDocRef.current = data.doc;
+        onRemoteDocRef.current?.(data.doc, { revision: data.revision, author: data.author });
+        return;
+      }
       void (async () => {
         try {
           const response = await fetch(`/api/rooms/${code}`, { cache: 'no-store' });
           if (!response.ok) return;
           const payload = await response.json();
+          baseDocRef.current = payload.doc as CircuitDoc;
           onRemoteDocRef.current?.(payload.doc as CircuitDoc, {
             revision: data.revision,
             author: data.author,
@@ -216,7 +312,7 @@ export function useCollaboration(options: {
       sourceRef.current = null;
       stopPolling();
     };
-  }, [code, enabled]);
+  }, [code, enabled, rememberLocks]);
 
   /* ------------------------------------------------------------- chat / doc */
   const sendMessage = useCallback(
@@ -237,23 +333,233 @@ export function useCollaboration(options: {
     [code],
   );
 
+  /**
+   * Publie une version du montage. Le serveur fusionne avec ce qu'il a entre
+   * temps ; si le résultat diffère de ce qu'on croyait avoir, `onRemoteDoc`
+   * réaligne l'éditeur et `onMerged` prévient l'utilisateur.
+   */
   const pushDoc = useCallback(
-    async (doc: CircuitDoc) => {
-      if (!code) return;
-      try {
+    async (doc: CircuitDoc): Promise<DocPushResult> => {
+      const empty: DocPushResult = { ok: false, revision: revisionRef.current, merged: false, conflicts: [], stats: EMPTY_STATS };
+      if (!code) return empty;
+
+      // une écriture à la fois ; les suivantes sont coalescées
+      if (pushingRef.current) {
+        queuedRef.current = doc;
+        return { ...empty, ok: true };
+      }
+      pushingRef.current = true;
+      setSaving(true);
+
+      const send = async (payloadDoc: CircuitDoc, attempt: number): Promise<DocPushResult> => {
         const response = await fetch(`/api/rooms/${code}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ doc }),
+          body: JSON.stringify({
+            doc: payloadDoc,
+            baseRevision: revisionRef.current,
+          }),
+        });
+        if (response.status === 409 && attempt === 0) {
+          // le serveur a refusé la base : on relit puis on retente une fois
+          const fresh = await fetch(`/api/rooms/${code}`, { cache: 'no-store' });
+          if (fresh.ok) {
+            const room = await fresh.json();
+            revisionRef.current = room.revision;
+            baseDocRef.current = room.doc as CircuitDoc;
+          }
+          return send(payloadDoc, 1);
+        }
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          return { ...empty, error: (body as { error?: string }).error ?? 'Écriture refusée.' };
+        }
+        const body = await response.json();
+        const result: DocPushResult = {
+          ok: true,
+          revision: body.revision ?? revisionRef.current,
+          merged: Boolean(body.merged),
+          stats: body.stats ?? EMPTY_STATS,
+          conflicts: (body.conflicts ?? []).map((c: Omit<LiveConflict, 'at'>) => ({ ...c, at: Date.now() })),
+        };
+        revisionRef.current = result.revision;
+        setRevision(result.revision);
+        rememberLocks(body.locks);
+        if (body.doc) baseDocRef.current = body.doc as CircuitDoc;
+        if (result.conflicts.length) {
+          setConflicts((current) => [...result.conflicts, ...current].slice(0, 12));
+        }
+        // le serveur a fusionné : l'éditeur local doit repartir du document réel
+        if (result.merged && body.doc) {
+          onRemoteDocRef.current?.(body.doc as CircuitDoc, { revision: result.revision });
+        }
+        if (result.merged || result.conflicts.length) onMergedRef.current?.(result);
+        return result;
+      };
+
+      try {
+        return await send(doc, 0);
+      } catch {
+        return { ...empty, error: 'Réseau indisponible.' };
+      } finally {
+        pushingRef.current = false;
+        setSaving(false);
+        const queued = queuedRef.current;
+        queuedRef.current = null;
+        if (queued) void pushDoc(queued);
+      }
+    },
+    // pushDoc se rappelle elle-même : la référence est stable par closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [code, rememberLocks],
+  );
+
+  /* ---------------------------------------------------------------- verrous */
+  const acquireLock = useCallback(
+    async (componentId: string): Promise<{ granted: boolean; holder?: string }> => {
+      if (!code) return { granted: false };
+      try {
+        const response = await fetch(`/api/rooms/${code}/locks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ componentId, action: 'acquire' }),
+        });
+        const body = await response.json().catch(() => ({}));
+        rememberLocks(body.locks);
+        if (!response.ok) return { granted: false, holder: body.holder?.name };
+        return { granted: true };
+      } catch {
+        return { granted: false };
+      }
+    },
+    [code, rememberLocks],
+  );
+
+  const releaseLock = useCallback(
+    async (componentId: string) => {
+      if (!code) return;
+      try {
+        const response = await fetch(`/api/rooms/${code}/locks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ componentId, action: 'release' }),
+          keepalive: true,
+        });
+        const body = await response.json().catch(() => ({}));
+        rememberLocks(body.locks);
+      } catch {
+        /* le verrou expirera de lui-même en 15 s */
+      }
+    },
+    [code, rememberLocks],
+  );
+
+  const releaseAllLocks = useCallback(async () => {
+    if (!code) return;
+    try {
+      await fetch(`/api/rooms/${code}/locks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentId: '_', action: 'release-all' }),
+        keepalive: true,
+      });
+    } catch {
+      /* expiration naturelle */
+    }
+  }, [code]);
+
+  const myLocks = useMemo(() => locks.filter((lock) => lock.userId === localId), [locks, localId]);
+
+  // battement : prolonge mes verrous tant que je les tiens
+  useEffect(() => {
+    if (!enabled || !code || myLocks.length === 0) return;
+    const timer = setInterval(() => {
+      void fetch(`/api/rooms/${code}/locks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentId: '_', action: 'renew' }),
+      }).catch(() => undefined);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [enabled, code, myLocks.length]);
+
+  /** Verrou posé par quelqu'un d'autre sur ce dipôle. */
+  const lockOf = useCallback(
+    (componentId: string): LiveLock | undefined =>
+      locks.find((lock) => lock.componentId === componentId && lock.userId !== localId),
+    [locks, localId],
+  );
+
+  /* ---------------------------------------------------------------- saisie */
+  const publishTyping = useCallback(
+    (active: boolean) => {
+      if (!code) return;
+      const now = Date.now();
+      if (active === lastTypingRef.current && now - typingSent.current < 1500) return;
+      lastTypingRef.current = active;
+      typingSent.current = now;
+      void fetch(`/api/rooms/${code}/typing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+        keepalive: true,
+      }).catch(() => undefined);
+    },
+    [code],
+  );
+
+  /* ------------------------------------------------------------- historique */
+  const loadHistory = useCallback(async (): Promise<LiveVersion[]> => {
+    if (!code) return [];
+    try {
+      const response = await fetch(`/api/rooms/${code}/history`, { cache: 'no-store' });
+      if (!response.ok) return [];
+      const body = await response.json();
+      return (body.versions ?? []) as LiveVersion[];
+    } catch {
+      return [];
+    }
+  }, [code]);
+
+  const restoreVersion = useCallback(
+    async (target: number): Promise<boolean> => {
+      if (!code) return false;
+      try {
+        const response = await fetch(`/api/rooms/${code}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revision: target }),
+        });
+        if (!response.ok) return false;
+        const body = await response.json();
+        if (body.doc) {
+          revisionRef.current = body.revision;
+          setRevision(body.revision);
+          baseDocRef.current = body.doc as CircuitDoc;
+          onRemoteDocRef.current?.(body.doc as CircuitDoc, { revision: body.revision });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [code],
+  );
+
+  const reactTo = useCallback(
+    async (messageId: string, emoji: string) => {
+      if (!code) return;
+      try {
+        const response = await fetch(`/api/rooms/${code}/react`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messageId, emoji }),
         });
         if (!response.ok) return;
-        const payload = await response.json();
-        if (payload.revision) {
-          revisionRef.current = payload.revision;
-          setRevision(payload.revision);
-        }
+        const body = await response.json();
+        if (body.messages) setMessages(body.messages);
       } catch {
-        /* sera réessayé au prochain changement */
+        /* réaction non essentielle */
       }
     },
     [code],
@@ -280,6 +586,24 @@ export function useCollaboration(options: {
     };
   }, [enabled, code, publishCursor]);
 
+  /** On relâche nos verrous en quittant l'atelier. */
+  useEffect(() => {
+    if (!code) return;
+    const leave = () => {
+      void fetch(`/api/rooms/${code}/locks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentId: '_', action: 'release-all' }),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', leave);
+    return () => {
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, [code]);
+
   return useMemo(
     () => ({
       connected,
@@ -290,9 +614,24 @@ export function useCollaboration(options: {
       revision,
       lastAuthor,
       localId,
+      locks,
+      myLocks,
+      typing,
+      conflicts,
+      saving,
       publishCursor,
       sendMessage,
       pushDoc,
+      setBaseline,
+      acquireLock,
+      releaseLock,
+      releaseAllLocks,
+      lockOf,
+      publishTyping,
+      loadHistory,
+      restoreVersion,
+      reactTo,
+      dismissConflicts: () => setConflicts([]),
       remoteCursors: cursors.filter((c) => c.id !== localId),
     }),
     [
@@ -304,9 +643,23 @@ export function useCollaboration(options: {
       revision,
       lastAuthor,
       localId,
+      locks,
+      myLocks,
+      typing,
+      conflicts,
+      saving,
       publishCursor,
       sendMessage,
       pushDoc,
+      setBaseline,
+      acquireLock,
+      releaseLock,
+      releaseAllLocks,
+      lockOf,
+      publishTyping,
+      loadHistory,
+      restoreVersion,
+      reactTo,
     ],
   );
 }

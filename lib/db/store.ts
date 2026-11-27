@@ -109,8 +109,25 @@ export interface StoredRoom {
   updatedAt: string;
   presence: Record<string, PresenceRecord>;
   revision: number;
-  messages: Array<{ id: string; authorId: string; authorName: string; text: string; at: string }>;
+  messages: Array<{
+    id: string;
+    authorId: string;
+    authorName: string;
+    text: string;
+    at: string;
+    /** réactions : emoji → identifiants des auteurs */
+    reactions?: Record<string, string[]>;
+  }>;
   closed: boolean;
+  /** dernières versions du montage (fusion à trois branches, restauration) */
+  history?: Array<{ revision: number; doc: unknown; at: string; authorName: string; summary: string }>;
+  /** verrous souples en cours (volatils) */
+  locks?: Record<
+    string,
+    { componentId: string; userId: string; name: string; color: string; since: number; expiresAt: number }
+  >;
+  /** « X est en train d’écrire… » (volatil) */
+  typing?: Record<string, { name: string; at: number }>;
   /** projet auquel l'atelier est rattaché */
   projectId?: string;
   /** numéro de la version des curseurs (ne force pas la persistance disque) */

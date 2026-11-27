@@ -7,27 +7,38 @@ import {
   Check,
   CircleDot,
   Cloud,
+  GitMerge,
   Copy,
   DoorOpen,
   Hash,
+  History,
   KeyRound,
+  Lock,
   Loader2,
   LogOut,
   MessageSquare,
   Plus,
   Radio,
+  RotateCcw,
   Send,
   ShieldCheck,
   Sparkles,
   Timer,
+  TriangleAlert,
   Users,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { CircuitDoc } from '@/lib/engine/types';
 import { StudioShell } from '@/components/studio/StudioShell';
-import { useCollaboration, type LiveCursor, type LiveParticipant } from '@/hooks/useCollaboration';
+import {
+  useCollaboration,
+  type LiveCursor,
+  type LiveParticipant,
+  type LiveVersion,
+} from '@/hooks/useCollaboration';
 import { sanitizeDoc } from '@/lib/studio/doc';
 import { TileGlyph } from '@/components/marketing/TileGlyph';
 import { cn, timeAgo } from '@/lib/utils';
@@ -85,7 +96,14 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
   const [newRoomProject, setNewRoomProject] = useState('');
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [creating, setCreating] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<LiveVersion[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const pushedDocRef = useRef<string>('');
+  const previousDocRef = useRef<CircuitDoc | null>(null);
+  const warnedLocksRef = useRef<Set<string>>(new Set());
+  const lockTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const baselineRef = useRef<((doc: CircuitDoc | null, rev: number) => void) | null>(null);
   const revisionRef = useRef(0);
   const [revision, setRevision] = useState(0);
   const setRevisionRef = useCallback((value: number) => {
@@ -106,6 +124,9 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
       setOwnerId(payload.ownerId);
       setInitialMessages(payload.messages ?? []);
       setRevisionRef(payload.revision);
+      const loaded = sanitizeDoc(payload.doc as CircuitDoc);
+      previousDocRef.current = loaded;
+      baselineRef.current?.(loaded, payload.revision);
       setCode(target);
       setPhase('joined');
       if (!opts.silent) success('Atelier rejoint', `Code ${target} · ${payload.participants.length} participant(s).`);
@@ -130,9 +151,26 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
     onRemoteDoc: (remote, meta) => {
       setDoc(sanitizeDoc(remote));
       setRevision(meta.revision);
-      if (meta.author) info(`Mise à jour de ${meta.author}`, 'Le montage distant a été appliqué.');
+      if (meta.author && meta.author !== user.name) {
+        info(`Mise à jour de ${meta.author}`, 'Le montage distant a été appliqué, sans rien écraser.');
+      }
+    },
+    onMerged: (result) => {
+      // le serveur a fusionné : on prévient, on ne bloque jamais l'édition
+      const parts = result.stats
+        ? [result.stats.added && `+${result.stats.added}`, result.stats.removed && `−${result.stats.removed}`, result.stats.updated && `~${result.stats.updated}`]
+            .filter(Boolean)
+            .join(' ')
+        : '';
+      if (result.conflicts.length) {
+        info('Fusion avec arbitrage', `${result.conflicts.length} collision(s) résolue(s).`);
+      } else if (parts) {
+        info('Fusion automatique', `Les deux versions ont été cumulées (${parts}).`);
+      }
     },
   });
+
+  baselineRef.current = collaboration.setBaseline;
 
   const participants: LiveParticipant[] = collaboration.participants;
   interface ChatMessage {
@@ -141,6 +179,7 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
     authorName: string;
     text: string;
     at: string;
+    reactions?: Record<string, string[]>;
   }
   const messages = useMemo<ChatMessage[]>(() => {
     const merged = new Map<string, ChatMessage>();
@@ -151,13 +190,92 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
   const remoteCursors: LiveCursor[] = collaboration.remoteCursors;
 
   /* ----------------------------------------------------- push des modifications */
+  /**
+   * Toute modification part par la fusion (`pushDoc`) et pose un verrou souple
+   * sur les dipôles touchés : les autres voient « P. modifie R2 » et ne
+   * peuvent pas l'écraser par surprise.
+   */
   const onDocChange = useCallback(
     (next: CircuitDoc, commit: boolean) => {
       if (!commit || !code) return;
       pushedDocRef.current = JSON.stringify(next);
+
+      const previous = previousDocRef.current;
+      previousDocRef.current = next;
+
+      if (previous) {
+        const before = new Map(previous.components.map((c) => [c.id, JSON.stringify(c)]));
+        const after = new Map(next.components.map((c) => [c.id, JSON.stringify(c)]));
+        const touched = new Set<string>();
+        for (const [id, snapshot] of after) if (before.get(id) !== snapshot) touched.add(id);
+        for (const id of before.keys()) if (!after.has(id)) touched.add(id);
+
+        for (const componentId of touched) {
+          const existing = lockTimersRef.current.get(componentId);
+          if (existing) clearTimeout(existing);
+          // libération douce : le verrou retombe dès qu'on ne touche plus
+          lockTimersRef.current.set(
+            componentId,
+            setTimeout(() => {
+              lockTimersRef.current.delete(componentId);
+              warnedLocksRef.current.delete(componentId);
+              void collaboration.releaseLock(componentId);
+            }, 5000),
+          );
+
+          if (collaboration.lockOf(componentId)) {
+            // déjà verrouillé par quelqu'un d'autre : on prévient une seule fois
+            if (!warnedLocksRef.current.has(componentId)) {
+              warnedLocksRef.current.add(componentId);
+              const holder = collaboration.lockOf(componentId);
+              info(`${holder?.name ?? 'Un collaborateur'} tient ce dipôle`, 'Vos changements seront fusionnés, rien n’est écrasé.');
+            }
+            continue;
+          }
+          void collaboration.acquireLock(componentId).then((result) => {
+            if (!result.granted && result.holder && !warnedLocksRef.current.has(componentId)) {
+              warnedLocksRef.current.add(componentId);
+              info(`${result.holder} travaille sur ce dipôle`, 'La fusion départagera les deux versions.');
+            }
+          });
+        }
+      }
+
       void collaboration.pushDoc(next);
     },
-    [code, collaboration],
+    [code, collaboration, info],
+  );
+
+  /** Frise des versions de l'atelier. */
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setLoadingHistory(true);
+    try {
+      setVersions(await collaboration.loadHistory());
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [collaboration]);
+
+  const restoreVersion = useCallback(
+    async (target: number) => {
+      const ok = await collaboration.restoreVersion(target);
+      if (ok) {
+        success(`Version ${target} restaurée`, 'L’atelier repart de cette version — rien n’est perdu, elle reste dans la frise.');
+        void openHistory();
+      } else {
+        error('Restauration impossible', 'Cette version n’est plus disponible.');
+      }
+    },
+    [collaboration, openHistory, success, error],
+  );
+
+  useEffect(
+    () => () => {
+      for (const timer of lockTimersRef.current.values()) clearTimeout(timer);
+      lockTimersRef.current.clear();
+    },
+    [],
   );
 
   /* ------------------------------------------------------------------ actions */
@@ -260,10 +378,46 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
             {connected ? <Wifi size={10} /> : <WifiOff size={10} />}
             {connected ? 'temps réel' : 'reconnexion…'}
           </span>
+          <span
+            className={cn(
+              'flex items-center gap-1 rounded-full border px-2 py-0.5',
+              collaboration.saving
+                ? 'border-spark-amber/40 bg-spark-amber/10 text-spark-amber'
+                : collaboration.conflicts.length
+                  ? 'border-spark-violet/40 bg-spark-violet/10 text-spark-violet'
+                  : 'border-spark-green/30 bg-spark-green/[0.07] text-spark-green',
+            )}
+            title="Chaque écriture est fusionnée côté serveur : rien n’est écrasé."
+          >
+            {collaboration.saving ? (
+              <Loader2 size={10} className="animate-spin" />
+            ) : collaboration.conflicts.length ? (
+              <GitMerge size={10} />
+            ) : (
+              <ShieldCheck size={10} />
+            )}
+            {collaboration.saving
+              ? 'synchronisation…'
+              : collaboration.conflicts.length
+                ? 'fusion arbitrée'
+                : 'aucun écrasement'}
+          </span>
           <span className="flex items-center gap-1 text-fg-mute">
             <Users size={10} /> {participants.length} en ligne
           </span>
+          {collaboration.typing.length ? (
+            <span className="flex items-center gap-1 text-spark-cyan">
+              <Timer size={10} /> {collaboration.typing.map((t) => t.name).join(', ')} écrit…
+            </span>
+          ) : null}
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void openHistory()}
+              className={cn('btn btn-sm btn-ghost px-2', historyOpen && 'border-spark-amber/50 text-spark-amber')}
+            >
+              <History size={12} /> Versions
+            </button>
             <button type="button" onClick={copyInvite} className="btn btn-sm btn-ghost px-2">
               <Copy size={12} /> Inviter
             </button>
@@ -279,6 +433,29 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
             </button>
           </div>
         </div>
+
+        {collaboration.conflicts.length ? (
+          <div className="flex flex-wrap items-start gap-2 border-b border-spark-violet/30 bg-spark-violet/[0.07] px-3 py-1.5 text-[11px]">
+            <span className="flex items-center gap-1 font-semibold text-spark-violet">
+              <GitMerge size={12} /> Fusion arbitrée
+            </span>
+            <ul className="min-w-0 flex-1 space-y-0.5 text-fg-soft">
+              {collaboration.conflicts.slice(0, 4).map((conflict, index) => (
+                <li key={`${conflict.field}-${conflict.componentId ?? index}`} className="truncate">
+                  <span className="text-fg-mute">{conflict.field}</span> — {conflict.message}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={collaboration.dismissConflicts}
+              className="btn btn-sm btn-ghost px-1.5 text-fg-mute"
+              aria-label="Masquer"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ) : null}
 
         <div className="flex">
           <div className="min-w-0 flex-1">
@@ -324,11 +501,38 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                         {p.name}
                         {p.id === ownerId ? <span className="ml-1 text-[9px] text-spark-amber">hôte</span> : null}
                       </span>
-                      <CircleDot size={9} className="text-spark-green" />
+                      {collaboration.locks.filter((l) => l.userId === p.id).length ? (
+                        <span className="flex items-center gap-0.5 rounded-full border border-spark-amber/40 bg-spark-amber/10 px-1 text-[9px] text-spark-amber">
+                          <Lock size={8} />
+                          {collaboration.locks.filter((l) => l.userId === p.id).length}
+                        </span>
+                      ) : (
+                        <CircleDot size={9} className="text-spark-green" />
+                      )}
                     </div>
                   ))
                 ) : (
                   <p className="text-[10.5px] text-fg-mute">Vous êtes seul pour le moment.</p>
+                )}
+              </div>
+
+              <div className="space-y-1 border-b border-line/60 p-2.5">
+                <p className="label-xs flex items-center gap-1">
+                  <Lock size={9} /> Dipôles verrouillés
+                </p>
+                {collaboration.locks.length ? (
+                  collaboration.locks.slice(0, 6).map((lock) => (
+                    <div key={`${lock.componentId}-${lock.userId}`} className="flex items-center gap-1.5 text-[10.5px]">
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: lock.color }} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-fg-soft">{lock.componentId}</span>
+                      <span className="text-fg-mute">{lock.name}</span>
+                      <span className="w-6 text-right text-[9px] text-fg-mute">{Math.round(lock.ttlMs / 1000)}s</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10.5px] text-fg-mute">
+                    Aucun. Un verrou de 15 s se pose dès qu’un dipôle est modifié.
+                  </p>
                 )}
               </div>
               <div className="flex min-h-0 flex-1 flex-col">
@@ -350,6 +554,28 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                           <span>{new Date(m.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </p>
                         <p className="mt-0.5 text-[11px] leading-snug text-fg">{m.text}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {(['👍', '🔍', '⚠️'] as const).map((emoji) => {
+                            const authors = m.reactions?.[emoji] ?? [];
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => void collaboration.reactTo(m.id, emoji)}
+                                className={cn(
+                                  'rounded-full border px-1 text-[9px] leading-4',
+                                  authors.length
+                                    ? 'border-spark-cyan/40 bg-spark-cyan/10 text-spark-cyan'
+                                    : 'border-line/40 text-fg-mute hover:text-fg',
+                                )}
+                                title={authors.length ? `${authors.length} réaction(s)` : 'Réagir'}
+                              >
+                                {emoji}
+                                {authors.length ? <span className="ml-0.5">{authors.length}</span> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -367,7 +593,11 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                 >
                   <input
                     value={chatText}
-                    onChange={(e) => setChatText(e.target.value)}
+                    onChange={(e) => {
+                      setChatText(e.target.value);
+                      collaboration.publishTyping(Boolean(e.target.value));
+                    }}
+                    onBlur={() => collaboration.publishTyping(false)}
                     placeholder="Écrire…"
                     className="field px-2 py-1.5 text-[11px]"
                     maxLength={500}
@@ -376,6 +606,77 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                     <Send size={12} />
                   </button>
                 </form>
+              </div>
+            </aside>
+          ) : null}
+
+          {historyOpen ? (
+            <aside className="hidden w-[300px] shrink-0 border-l border-line/60 bg-ink-900/60 lg:flex lg:flex-col">
+              <div className="flex items-center justify-between border-b border-line/60 p-2.5">
+                <p className="flex items-center gap-1 text-[11px] font-semibold">
+                  <History size={11} className="text-spark-amber" /> Versions de l’atelier
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(false)}
+                  className="btn btn-sm btn-ghost px-1.5"
+                  aria-label="Fermer la frise"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+              <p className="border-b border-line/60 px-2.5 py-1.5 text-[10px] leading-relaxed text-fg-mute">
+                Chaque écriture crée une révision fusionnée. Restaurer ne supprime rien : la version courante
+                entre elle aussi dans la frise.
+              </p>
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                {loadingHistory ? (
+                  <p className="flex items-center gap-1.5 p-2 text-[11px] text-fg-mute">
+                    <Loader2 size={11} className="animate-spin" /> Lecture de la frise…
+                  </p>
+                ) : versions.length ? (
+                  versions.map((version) => (
+                    <div
+                      key={`${version.revision}-${version.at}`}
+                      className={cn(
+                        'rounded-lg border px-2 py-1.5',
+                        version.revision === revision
+                          ? 'border-spark-cyan/40 bg-spark-cyan/[0.07]'
+                          : 'border-line/40 bg-ink-850/50',
+                      )}
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-fg-mute">
+                        <span className="font-mono">rév. {version.revision}</span>
+                        <span>{timeAgo(version.at)}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-fg-soft">
+                        {version.authorName} · {version.summary}
+                      </p>
+                      {version.revision !== revision ? (
+                        <button
+                          type="button"
+                          onClick={() => void restoreVersion(version.revision)}
+                          className="btn btn-sm btn-ghost mt-1 w-full justify-center px-1.5 text-[10px]"
+                        >
+                          <RotateCcw size={10} /> Restaurer cette version
+                        </button>
+                      ) : (
+                        <p className="mt-1 flex items-center gap-1 text-[9.5px] text-spark-green">
+                          <Check size={9} /> version courante
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="p-2 text-[11px] leading-relaxed text-fg-mute">
+                    Aucune version antérieure : la frise se remplit dès la première modification de vos
+                    collaborateurs.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 border-t border-line/60 p-2 text-[10px] text-fg-mute">
+                <TriangleAlert size={10} className="text-spark-amber" />
+                Les 24 dernières révisions sont conservées.
               </div>
             </aside>
           ) : null}

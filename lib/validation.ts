@@ -96,6 +96,8 @@ export const roomJoinSchema = z.object({
 
 export const roomPatchSchema = z.object({
   doc: circuitDocSchema.optional(),
+  /** révision que le client avait en main : base de la fusion à trois branches */
+  baseRevision: z.number().int().min(0).max(1_000_000).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(500).optional(),
 });

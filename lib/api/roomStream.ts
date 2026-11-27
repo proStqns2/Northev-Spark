@@ -3,6 +3,8 @@ import {
   findRoom,
   livePresence,
 } from '@/lib/db/repo';
+import { expireLocks, lockSummary } from '@/lib/collab/locks';
+import { sanitizeDoc } from '@/lib/collab/merge';
 import type { CursorState, PresenceRecord } from '@/lib/db/store';
 import type { SessionUser } from '@/lib/auth/session';
 
@@ -37,6 +39,8 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
   let lastPresenceSignature = '';
   let lastCursorSignature = '';
   let lastMessageId: string | null = null;
+  let lastLockSignature = '';
+  let lastTypingSignature = '';
 
   return {
     async start() {
@@ -100,6 +104,7 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
       }
 
       if (room.revision !== revision) {
+        const first = revision === 0;
         revision = room.revision;
         events.push({
           event: 'revision',
@@ -107,8 +112,27 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
             revision: room.revision,
             updatedAt: room.updatedAt,
             author: room.messages.at(-1)?.authorName,
+            // le document accompagne la révision : plus besoin de re-sonder
+            doc: first ? undefined : sanitizeDoc(room.doc as never),
+            locks: lockSummary(expireLocks(room.locks ?? {}, now), now),
           },
         });
+      }
+
+      const locks = lockSummary(expireLocks(room.locks ?? {}, now), now);
+      const lockSignature = locks.map((l) => `${l.componentId}:${l.userId}:${Math.round(l.ttlMs / 1000)}`).join('|');
+      if (lockSignature !== lastLockSignature) {
+        lastLockSignature = lockSignature;
+        events.push({ event: 'locks', data: { locks } });
+      }
+
+      const typing = Object.entries(room.typing ?? {})
+        .filter(([, entry]) => now - entry.at < 6_000)
+        .map(([id, entry]) => ({ id, name: entry.name }));
+      const typingSignature = typing.map((t) => `${t.id}:${t.name}`).sort().join('|');
+      if (typingSignature !== lastTypingSignature) {
+        lastTypingSignature = typingSignature;
+        events.push({ event: 'typing', data: { typing } });
       }
 
       const lastMessage = room.messages.at(-1);
