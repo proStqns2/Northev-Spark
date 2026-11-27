@@ -5,15 +5,20 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  Beaker,
   BookOpen,
+  Dumbbell,
   FolderKanban,
   Shapes,
   CircuitBoard,
   FlaskConical,
-  SlidersHorizontal,
+  GraduationCap,
+  ListChecks,
   LogOut,
   Menu,
+  SlidersHorizontal,
   Sparkles,
+  Target,
   User,
   Users,
   X,
@@ -25,11 +30,16 @@ import { cn } from '@/lib/utils';
 import type { SessionUser } from '@/lib/auth/session';
 
 const LINKS = [
+  { href: '/academie', label: 'Académie', icon: GraduationCap, badge: 'NEW' },
   { href: '/studio', label: 'Studio', icon: CircuitBoard },
   { href: '/projets', label: 'Projets', icon: FolderKanban },
   { href: '/symboles', label: 'Symboles', icon: Shapes },
   { href: '/bibliotheque', label: 'Bibliothèque', icon: BookOpen },
   { href: '/multiwork', label: 'Multiwork', icon: Users },
+  { href: '/labo', label: 'Labo', icon: Beaker },
+  { href: '/quiz', label: 'Quiz', icon: ListChecks },
+  { href: '/exercices', label: 'Exercices', icon: Dumbbell },
+  { href: '/defis', label: 'Défis', icon: Target },
   { href: '/agents', label: 'Agents', icon: Sparkles },
   { href: '/premium', label: 'Premium', icon: Crown, badge: 'IA' },
   { href: '/export', label: 'Export', icon: FlaskConical },
@@ -99,17 +109,19 @@ export function TopNav({ user }: { user: SessionUser | null }) {
               <Link
                 key={link.href}
                 href={link.href}
+                title={link.label}
                 className={cn(
-                  'relative flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition',
+                  'relative flex items-center gap-1.5 rounded-lg px-2 py-2 text-[12.5px] font-medium transition',
+                  'xl:gap-2 xl:px-2.5 xl:text-[13px]',
                   active
                     ? 'bg-ink-800/90 text-fg'
                     : 'text-fg-soft hover:bg-ink-850 hover:text-fg',
                 )}
               >
                 <Icon size={15} className={active ? 'text-spark-cyan' : ''} />
-                {link.label}
+                <span className="hidden xl:inline">{link.label}</span>
                 {link.badge ? (
-                  <span className="rounded-full border border-spark-violet/40 bg-spark-violet/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-spark-violet">
+                  <span className="hidden rounded-full border border-spark-violet/40 bg-spark-violet/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-spark-violet 2xl:inline">
                     {link.badge}
                   </span>
                 ) : null}

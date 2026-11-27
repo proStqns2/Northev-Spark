@@ -1,6 +1,7 @@
 import type { ApiRoute } from '../http';
 
 import { TEMPLATES, FAMILY_LABEL } from '@/lib/data/templates';
+import { templateDoc } from '@/lib/data/loadDoc';
 import { cachedEquivalent } from '@/lib/cache';
 import { abs } from '@/lib/engine/complex';
 
@@ -33,6 +34,17 @@ export const templateRoutes: ApiRoute[] = [
       };
     });
     return reply.send({ templates: items });
-  }]
-];
+  }],
 
+  [
+    'GET',
+    '/api/templates/:slug',
+    async (request, reply) => {
+      const { slug } = request.params as { slug: string };
+      const doc = templateDoc(slug);
+      if (!doc) return reply.code(404).send({ error: 'Gabarit introuvable.' });
+      reply.header('Cache-Control', 'public, max-age=300');
+      return reply.send({ doc });
+    },
+  ],
+];

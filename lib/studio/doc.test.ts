@@ -7,8 +7,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyDoc } from './doc';
-import { rotateComponent } from './doc';
+import { appendDoc, emptyDoc, rotateComponent } from './doc';
 import { orientationOf } from './geometry';
 import type { CircuitDoc, Component } from '@/lib/engine/types';
 
@@ -53,5 +52,40 @@ describe('rotation des dipôles', () => {
     const doc = withComponent(component());
     const same = rotateComponent(doc, 'R99');
     assert.deepEqual(same.components, doc.components);
+  });
+});
+
+
+describe('ajout d’un bloc de montage', () => {
+  it('préserve le document d’origine et décale les connexions avec des identifiants distincts', () => {
+    const original = {
+      ...withComponent(component()),
+      ground: '4,4',
+      terminals: { a: '4,4', b: '8,4' },
+    };
+    const block = {
+      ...withComponent({ ...component(), a: '-2,4', b: '2,4' }),
+      frequency: 1_000,
+      regime: 'ac' as const,
+    };
+    const merged = appendDoc(original, block);
+    assert.deepEqual(merged, {
+      ...original,
+      components: [...original.components, { ...first(block), id: 'R1_2', a: '12,4', b: '16,4' }],
+    });
+    const twice = appendDoc(merged, block);
+    assert.deepEqual(twice.components.map((part) => part.id), ['R1', 'R1_2', 'R1_3']);
+    assert.equal(twice.components[2].a, '20,4');
+  });
+
+  it('garde les réglages et les bornes du bloc quand le plan est vide', () => {
+    const block = {
+      ...withComponent(component()),
+      ground: '4,4',
+      terminals: { a: '4,4', b: '8,4' },
+      regime: 'ac' as const,
+      frequency: 1_000,
+    };
+    assert.deepEqual(appendDoc(emptyDoc(), block), block);
   });
 });

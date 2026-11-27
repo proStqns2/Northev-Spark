@@ -32,6 +32,8 @@ export interface StoredUser {
     animation?: boolean;
     electronSpeed?: number;
     digits?: number;
+    /** consentement explicite à l’usage de l’assistant IA */
+    ai?: boolean;
   };
 }
 
@@ -128,12 +130,32 @@ export interface StoredProject {
   archived: boolean;
 }
 
+export interface ProgressRecord {
+  userId: string;
+  xp: number;
+  days: string[];
+  streak: number;
+  bestStreak: number;
+  lastActive: string | null;
+  lessons: Record<string, { done: boolean; at: string; xp: number }>;
+  quizzes: Record<string, { best: number; attempts: number; at: string }>;
+  badges: Record<string, string>;
+  challenges: Record<string, { solvedAt: string; score: number }>;
+  /** gabarits déjà ouverts par l’élève (débloque les badges de visite) */
+  templates: string[];
+  /** exercices numériques résolus */
+  drills: { solved: number; correct: number; byKind: Record<string, { solved: number; correct: number }> };
+  updatedAt: string;
+}
+
 export interface DB {
   users: StoredUser[];
   sessions: SessionRecord[];
   circuits: StoredCircuit[];
   rooms: StoredRoom[];
   projects: StoredProject[];
+  /** progression académique, une ligne par utilisateur */
+  progress: ProgressRecord[];
   meta: { schema: number; createdAt: string };
 }
 
@@ -143,7 +165,8 @@ const EMPTY: DB = {
   circuits: [],
   rooms: [],
   projects: [],
-  meta: { schema: 2, createdAt: new Date().toISOString() },
+  progress: [],
+  meta: { schema: 3, createdAt: new Date().toISOString() },
 };
 
 const globalForDb = globalThis as unknown as {
@@ -172,6 +195,8 @@ async function readDb(): Promise<DB> {
     parsed.circuits ??= [];
     parsed.rooms ??= [];
     parsed.projects ??= [];
+    parsed.progress ??= [];
+    for (const row of parsed.progress) row.drills ??= { solved: 0, correct: 0, byKind: {} };
     globalForDb.__northevDb = parsed;
     return parsed;
   } catch {

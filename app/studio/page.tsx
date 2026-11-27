@@ -50,9 +50,10 @@ export default async function StudioPage({
   if (!doc && params.template) {
     doc = templateDoc(params.template);
   }
-  // la barre de valeurs peut livrer un montage prêt à l'emploi, partageable par URL
-  if (!doc && params.values) {
-    doc = sanitizeDoc(valueDoc(normalizeValueInput(params.values)));
+  // Le lien R·C·L ouvre un document explicite, sans restaurer un brouillon par-dessus.
+  const linkedValues = !doc && typeof params.values === 'string' ? params.values : undefined;
+  if (linkedValues) {
+    doc = valueDoc(normalizeValueInput(linkedValues));
   }
   // Amorçage : plutôt qu'une grille vide (l'utilisateur ne sait pas quoi faire),
   // on ouvre sur un montage complet et calculable — il peut le vider d'un geste.
@@ -61,6 +62,8 @@ export default async function StudioPage({
 
   return (
     <StudioPageClient
+      key={linkedValues}
+      restoreDraft={!linkedValues}
       user={user ? { id: user.id, name: user.name } : null}
       circuitId={params.circuit}
       templateSlug={params.template}
@@ -69,6 +72,7 @@ export default async function StudioPage({
       seeded={seeded}
       projectOptions={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
       initialProjectId={projectId}
+      aiEnabled={Boolean(process.env.AI_ASSISTANT_ENABLED === 'on' || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)}
       templates={TEMPLATES.map((t) => ({
         slug: t.slug,
         title: t.title,

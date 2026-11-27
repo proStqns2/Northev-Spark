@@ -26,8 +26,10 @@ Construit avec **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS** et 
   Chaque frappe relance l'analyse : le service **Express** construit un diviseur
   `R / (L ∥ C)`, le résout et renvoie `U_th`, `Z_th`, `I_N`, la résonance `f₀`,
   le facteur de qualité `Q`, `X_L`, `X_C` et la puissance maximale. **Charger**
-  remplace la grille, **Ajouter** pose le bloc à côté du montage existant, et le
-  badge indique qui a répondu (`express · leader` ou `moteur next` en repli).
+  remplace le montage, **Ajouter** pose le bloc à droite sans modifier le
+  câblage ni le régime du circuit existant. Les deux actions sont annulables
+  dans l’atelier. Le badge indique qui a répondu (`express · leader` ou
+  `moteur next` en repli).
 - **Grille magnétique** : tracé au glisser, accrochage aux nœuds, déplacement, rotation, inversion, duplication.
 - **Palette** : sources E/I, sources liées (VCVS/VCCS), R, C, L, potentiomètre, lampe, fils, interrupteurs, ampèremètre, voltmètre.
 - **Animation des électrons** : la vitesse et le sens dérivent du courant réellement calculé (`offset-path` SVG, désactivé si `prefers-reduced-motion`).
@@ -134,10 +136,11 @@ npx tsx scripts/seed-demo.ts
 
 ```bash
 npx tsx scripts/verify-engine.ts   # 8 cas analytiques (npm run verify)
-npm test                           # 32 tests unitaires
+npm test                           # solveur, atelier et API
+npm run check:studio               # interactions dans l’atelier, site déjà démarré
 ```
 
-`npm test` couvre le solveur MNA (diviseur, Wheatstone, superposition, RC/RLC en alternatif), le simulateur de charge `R_L`, les messages du canal multi-onglets, la rotation des dipôles, le rendu SSR des schémas équivalents, la barre de valeurs R·C·L (lecture des préfixes SI, U_th/Z_th analytiques, f₀, Q, courants réels) et son rendu.
+`npm test` couvre le solveur MNA, le simulateur de charge `R_L`, le canal multi-onglets, l’atelier (pose, câblage, historique), le rendu des schémas équivalents, l’API et la barre R·C·L (préfixes SI, résultats analytiques et rendu).
 
 ---
 

@@ -51,7 +51,7 @@ import {
   downloadPng,
   downloadSvg,
 } from '@/lib/studio/export';
-import { sanitizeDoc } from '@/lib/studio/doc';
+import { appendDoc, sanitizeDoc } from '@/lib/studio/doc';
 import type { ValueModel } from '@/lib/express/model';
 import { useToast } from '@/components/ui/Toast';
 import type { LiveCursor, LiveParticipant } from '@/hooks/useCollaboration';
@@ -225,34 +225,7 @@ export function StudioShell({
         );
         return;
       }
-      // ajout : décale la colonne la plus à droite du montage courant
-      const shift = doc.components.reduce((max, component) => {
-        for (const cell of [component.a, component.b]) {
-          const x = Number(cell.split(',')[0]);
-          if (Number.isFinite(x)) max = Math.max(max, x);
-        }
-        return max;
-      }, 0) + 4;
-      const extra = model.doc.components.map((component) => {
-        const move = (cell: string) => {
-          const [x, y] = cell.split(',').map(Number);
-          return `${(Number.isFinite(x) ? x : 0) + shift},${Number.isFinite(y) ? y : 0}`;
-        };
-        return {
-          ...component,
-          id: `${component.id}_${Math.random().toString(36).slice(2, 5)}`,
-          a: move(component.a),
-          b: move(component.b),
-        };
-      });
-      setDoc(
-        sanitizeDoc({
-          ...doc,
-          components: [...doc.components, ...extra],
-          ground: doc.ground || '0,10',
-        }),
-        { commit: true },
-      );
+      setDoc(appendDoc(doc, model.doc), { commit: true });
       success('Montage R·C·L ajouté', 'Le bloc a été posé à droite du montage existant.');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
