@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowRight, BadgeCheck, BookOpenCheck, Flame, ListChecks, Target, Trophy } from 'lucide-react';
+import { ArrowRight, BadgeCheck, BookOpenCheck, Dumbbell, Flame, ListChecks, Target, Trophy } from 'lucide-react';
 import { readSessionToken } from '@/lib/auth/session';
 import { resolveSession } from '@/lib/db/repo';
 import { rankOf, userProgress, userTemplates } from '@/lib/db/progress';
@@ -64,6 +64,13 @@ export default async function ProgressionPage() {
               <StatCard label="Quiz" value={quizzes.length} sub={`moyenne ${average} % · ${gradeOf(average).label}`} accent="#a479ff" icon={<ListChecks size={15} />} />
               <StatCard label="Défis" value={Object.keys(progress.challenges).length} accent="#ffc266" icon={<Target size={15} />} />
               <StatCard label="Série" value={`${progress.streak} j`} sub={`record ${progress.bestStreak} j`} accent="#ff7d6b" icon={<Flame size={15} />} />
+              <StatCard
+                label="Exercices"
+                value={progress.drills.solved}
+                sub={`${progress.drills.correct} justes · ${progress.drills.solved ? Math.round((progress.drills.correct / progress.drills.solved) * 100) : 0} %`}
+                accent="#46e6a0"
+                icon={<Dumbbell size={15} />}
+              />
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-line/50 p-3">

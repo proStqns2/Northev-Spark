@@ -32,6 +32,8 @@ export const XP = {
   dailyVisit: 15,
   export: 10,
   roomCreated: 20,
+  drillCorrect: 25,
+  drillEffort: 4,
 } as const;
 
 export function levelOf(xp: number): Level {

@@ -11,6 +11,7 @@ import {
   Sparkles,
   Target,
   Trophy,
+  Dumbbell,
 } from 'lucide-react';
 import { readSessionToken } from '@/lib/auth/session';
 import { resolveSession } from '@/lib/db/repo';
@@ -318,6 +319,13 @@ export default async function AcademiePage() {
             <div>
               <p className="text-[12.5px] font-medium">Construire</p>
               <p className="text-[10.5px] text-fg-mute">Studio complet, 15 gabarits</p>
+            </div>
+          </Link>
+          <Link href="/exercices" className="panel card-hover flex items-center gap-3 p-4">
+            <Dumbbell size={18} className="text-spark-green" />
+            <div>
+              <p className="text-[12.5px] font-medium">Exercices</p>
+              <p className="text-[10.5px] text-fg-mute">10 familles, tirages infinis</p>
             </div>
           </Link>
           <Link href="/defis" className="panel card-hover flex items-center gap-3 p-4">

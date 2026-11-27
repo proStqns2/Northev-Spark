@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import {
   Beaker,
   BookOpen,
+  Dumbbell,
   FolderKanban,
   Shapes,
   CircuitBoard,
@@ -36,6 +37,7 @@ const LINKS = [
   { href: '/multiwork', label: 'Multiwork', icon: Users },
   { href: '/labo', label: 'Labo', icon: Beaker },
   { href: '/quiz', label: 'Quiz', icon: ListChecks },
+  { href: '/exercices', label: 'Exercices', icon: Dumbbell },
   { href: '/defis', label: 'Défis', icon: Target },
   { href: '/agents', label: 'Agents', icon: Sparkles },
   { href: '/premium', label: 'Premium', icon: Crown, badge: 'IA' },

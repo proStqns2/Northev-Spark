@@ -141,6 +141,8 @@ export interface ProgressRecord {
   challenges: Record<string, { solvedAt: string; score: number }>;
   /** gabarits déjà ouverts par l’élève (débloque les badges de visite) */
   templates: string[];
+  /** exercices numériques résolus */
+  drills: { solved: number; correct: number; byKind: Record<string, { solved: number; correct: number }> };
   updatedAt: string;
 }
 
@@ -192,6 +194,7 @@ async function readDb(): Promise<DB> {
     parsed.rooms ??= [];
     parsed.projects ??= [];
     parsed.progress ??= [];
+    for (const row of parsed.progress) row.drills ??= { solved: 0, correct: 0, byKind: {} };
     globalForDb.__northevDb = parsed;
     return parsed;
   } catch {

@@ -32,7 +32,9 @@ export type BadgeCriteria =
   | { kind: 'daily'; count: number }
   | { kind: 'perfect' }
   /** leçon terminée entre 0 h et 5 h du matin */
-  | { kind: 'night' };
+  | { kind: 'night' }
+  /** exercices numériques réussis */
+  | { kind: 'drills'; count: number };
 
 export interface Badge {
   id: string;
@@ -153,6 +155,14 @@ export interface UserProgress {
   quizzes: Record<string, QuizProgress>;
   badges: Record<string, string>;
   challenges: Record<string, ChallengeProgress>;
+  /** exercices numériques résolus (compteur global + par type) */
+  drills: DrillTally;
+}
+
+export interface DrillTally {
+  solved: number;
+  correct: number;
+  byKind: Record<string, { solved: number; correct: number }>;
 }
 
 export const EMPTY_PROGRESS: UserProgress = {
@@ -165,4 +175,5 @@ export const EMPTY_PROGRESS: UserProgress = {
   quizzes: {},
   badges: {},
   challenges: {},
+  drills: { solved: 0, correct: 0, byKind: {} },
 };

@@ -17,7 +17,7 @@ export interface ProgressContext {
 }
 
 export interface ProgressEvent {
-  kind: 'lesson' | 'quiz' | 'challenge' | 'visit' | 'export' | 'template' | 'room';
+  kind: 'lesson' | 'quiz' | 'challenge' | 'visit' | 'export' | 'template' | 'room' | 'drill';
   /** leçon terminée, module du quiz, id du défi… */
   target?: string;
   /** score 0-100 pour un quiz, 0-100 pour un défi */
@@ -44,6 +44,11 @@ export function normalizeProgress(input: Partial<UserProgress> | undefined): Use
     quizzes: base.quizzes ?? {},
     badges: base.badges ?? {},
     challenges: base.challenges ?? {},
+    drills: {
+      solved: base.drills?.solved ?? 0,
+      correct: base.drills?.correct ?? 0,
+      byKind: base.drills?.byKind ?? {},
+    },
   };
 }
 
@@ -67,6 +72,24 @@ export function applyEvent(
   if (streak.gained) gained += XP.dailyVisit;
 
   switch (event.kind) {
+    case 'drill': {
+      const kind = event.target ?? 'mixte';
+      const correct = (event.score ?? 0) >= 50;
+      const tally = progress.drills.byKind[kind] ?? { solved: 0, correct: 0 };
+      tally.solved += 1;
+      if (correct) tally.correct += 1;
+      progress.drills.byKind[kind] = tally;
+      progress.drills.solved += 1;
+      if (correct) {
+        progress.drills.correct += 1;
+        gained += XP.drillCorrect;
+        message = 'Exercice résolu';
+      } else {
+        gained += XP.drillEffort;
+        message = 'Exercice tenté — la correction compte aussi';
+      }
+      break;
+    }
     case 'lesson': {
       const slug = event.target;
       if (!slug) break;
@@ -170,6 +193,9 @@ export function evaluateBadges(progress: UserProgress, context: ProgressContext)
         break;
       case 'templates':
         ok = criteria.slugs.every((slug) => templates.has(slug));
+        break;
+      case 'drills':
+        ok = (progress.drills?.correct ?? 0) >= criteria.count;
         break;
       case 'night':
         ok = Object.values(progress.lessons).some((lesson) => {

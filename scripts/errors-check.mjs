@@ -1,6 +1,6 @@
 import { JSDOM, VirtualConsole } from 'jsdom';
 const base = 'http://127.0.0.1:3000';
-const pages = ['/', '/academie', '/academie/bases', '/academie/lecon/phaseurs', '/quiz', '/quiz/filtres', '/defis', '/labo', '/glossaire', '/formules', '/badges', '/classement', '/compte', '/compte?mode=inscription', '/studio', '/agents', '/bibliotheque', '/multiwork', '/premium', '/projets', '/symboles', '/export'];
+const pages = ['/', '/academie', '/academie/bases', '/academie/lecon/phaseurs', '/quiz', '/quiz/filtres', '/defis', '/labo', '/exercices', '/glossaire', '/formules', '/badges', '/classement', '/compte', '/compte?mode=inscription', '/studio', '/agents', '/bibliotheque', '/multiwork', '/premium', '/projets', '/symboles', '/export'];
 const cookie = process.argv[2] ?? '';
 
 for (const page of pages) {

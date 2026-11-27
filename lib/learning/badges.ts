@@ -377,6 +377,33 @@ export const BADGES: Badge[] = [
     criteria: { kind: 'xp', amount: 6500 },
     hint: '6 500 XP : le sommet du classement.',
   },
+  {
+    id: 'drill-10',
+    title: 'Calculatrice humaine',
+    description: 'Résoudre 10 exercices numériques.',
+    tier: 'bronze',
+    icon: 'target',
+    criteria: { kind: 'drills', count: 10 },
+    hint: 'La page Exercices génère des énoncés à l’infini.',
+  },
+  {
+    id: 'drill-50',
+    title: 'Mentaliste',
+    description: 'Résoudre 50 exercices numériques.',
+    tier: 'argent',
+    icon: 'target',
+    criteria: { kind: 'drills', count: 50 },
+    hint: 'Cinquante calculs, zéro brouillon.',
+  },
+  {
+    id: 'drill-200',
+    title: 'Sans papier',
+    description: 'Résoudre 200 exercices numériques.',
+    tier: 'platine',
+    icon: 'target',
+    criteria: { kind: 'drills', count: 200 },
+    hint: 'Deux cents exercices : la calculatrice devient inutile.',
+  },
 ];
 
 export const BADGE_TIERS: Record<string, { label: string; color: string; ring: string }> = {

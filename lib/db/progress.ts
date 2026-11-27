@@ -24,6 +24,7 @@ export function toUserProgress(record: ProgressRecord | undefined): UserProgress
     quizzes: record.quizzes,
     badges: record.badges,
     challenges: record.challenges,
+    drills: record.drills,
   });
 }
 
@@ -61,6 +62,7 @@ export async function saveProgress(
         badges: {},
         challenges: {},
         templates: [],
+        drills: { solved: 0, correct: 0, byKind: {} },
         updatedAt: new Date().toISOString(),
       };
       db.progress.push(row);
@@ -74,6 +76,7 @@ export async function saveProgress(
     row.quizzes = progress.quizzes;
     row.badges = progress.badges;
     row.challenges = progress.challenges;
+    row.drills = progress.drills;
     row.templates = [...new Set([...row.templates, ...templates])].slice(-200);
     row.updatedAt = new Date().toISOString();
     return row;
@@ -98,6 +101,7 @@ export async function recordTemplateVisit(userId: string, slug: string): Promise
         badges: {},
         challenges: {},
         templates: [],
+        drills: { solved: 0, correct: 0, byKind: {} },
         updatedAt: new Date().toISOString(),
       };
       db.progress.push(row);

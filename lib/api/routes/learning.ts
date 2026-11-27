@@ -17,7 +17,7 @@ import { levelProgress, todayIso } from '@/lib/learning/xp';
  */
 
 const eventSchema = z.object({
-  kind: z.enum(['lesson', 'quiz', 'challenge', 'visit', 'export', 'template', 'room']),
+  kind: z.enum(['lesson', 'quiz', 'challenge', 'visit', 'export', 'template', 'room', 'drill']),
   target: z.string().max(80).optional(),
   score: z.number().min(0).max(100).optional(),
   template: z.string().max(64).optional(),
