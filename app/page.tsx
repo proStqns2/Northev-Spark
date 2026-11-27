@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { TechStrip } from '@/components/shell/TechStrip';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -360,16 +359,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ------------------------------------------------------- bandeau tech */}
-      <section className="mx-auto max-w-[1500px] px-4 pb-16 sm:px-6">
-        <div className="rounded-2xl border border-line/40 bg-ink-950/40 px-4 py-6">
-          <TechStrip />
-          <p className="mx-auto mt-3 max-w-[60ch] text-center text-[10px] leading-relaxed text-fg-mute">
-            Le calcul reste local : ni le solveur, ni les agents, ni le Studio ne dépendent d’une clé d’API. Le service
-            Express est un second hôte du même code, jamais un second moteur.
-          </p>
-        </div>
-      </section>
+      {/* Le bandeau « bâti avec » est monté une seule fois, dans le pied de page
+          (components/shell/SiteFooter.tsx) : il suit donc toutes les pages. */}
     </div>
   );
 }
