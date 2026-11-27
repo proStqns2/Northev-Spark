@@ -72,30 +72,34 @@ export function TopNav({ user }: { user: SessionUser | null }) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-50 border-b transition duration-300',
+        'sticky top-0 z-50 overflow-x-clip border-b transition duration-300',
         scrolled
           ? 'border-line/70 bg-ink-950/85 backdrop-blur-xl'
           : 'border-transparent bg-ink-950/40 backdrop-blur',
       )}
     >
-      <div className="mx-auto flex h-16 max-w-[1500px] items-center gap-3 px-4 sm:px-6">
-        <Link href="/" className="group flex items-center gap-2.5" aria-label="Northev Spark — accueil">
-          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-line/60 bg-[#ececeb] shadow-glow-sm transition group-hover:border-spark-cyan/50">
+      <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6">
+        <Link
+          href="/"
+          className="group flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5"
+          aria-label="Northev Spark — accueil"
+        >
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line/60 bg-[#ececeb] shadow-glow-sm transition group-hover:border-spark-cyan/50 sm:h-9 sm:w-9">
             {/* monogramme isométrique officiel */}
             <Image
               src="/brand/logo-192.png"
               alt=""
               width={36}
               height={36}
-              className="h-[34px] w-[34px] object-contain transition group-hover:scale-[1.06]"
+              className="h-[30px] w-[30px] object-contain transition group-hover:scale-[1.06] sm:h-[34px] sm:w-[34px]"
               priority
             />
           </span>
-          <span className="hidden flex-col leading-none sm:flex">
-            <span className="text-[15px] font-semibold tracking-tight">
+          <span className="hidden min-w-0 flex-col leading-none min-[380px]:flex">
+            <span className="truncate text-[15px] font-semibold tracking-tight">
               Northev<span className="text-spark-cyan"> Spark</span>
             </span>
-            <span className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-fg-mute">
+            <span className="mt-0.5 hidden truncate font-mono text-[10px] uppercase tracking-[0.18em] text-fg-mute sm:block">
               équivalents T · N
             </span>
           </span>
@@ -133,30 +137,33 @@ export function TopNav({ user }: { user: SessionUser | null }) {
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <Link
             href={user ? '/studio' : '/compte?mode=inscription'}
-            className="btn btn-primary btn-sm hidden sm:inline-flex"
+            className="btn btn-primary btn-sm shrink-0 px-2 sm:px-3"
+            aria-label={user ? 'Ouvrir le studio' : 'Créer un compte'}
+            title={user ? 'Ouvrir le studio' : 'Créer un compte'}
           >
             <Zap size={14} />
-            {user ? 'Ouvrir le studio' : 'Créer un compte'}
+            <span className="hidden sm:inline">{user ? 'Ouvrir le studio' : 'Créer un compte'}</span>
           </Link>
 
           {user ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <Link
                 href="/compte"
-                className="flex items-center gap-2 rounded-xl border border-line/60 bg-ink-900/80 px-1.5 py-1.5 pr-3 transition hover:border-spark-cyan/50 sm:px-2"
+                className="flex items-center gap-2 rounded-xl border border-line/60 bg-ink-900/80 p-1 transition hover:border-spark-cyan/50 sm:py-1.5 sm:pl-1.5 sm:pr-3"
+                title={user.name}
               >
                 <Avatar name={user.name} avatar={user.avatar} size={26} />
-                <span className="hidden max-w-[110px] truncate text-xs font-medium sm:block">
+                <span className="hidden max-w-[110px] truncate text-xs font-medium md:block">
                   {user.name}
                 </span>
               </Link>
               <button
                 type="button"
                 onClick={logout}
-                className="btn btn-ghost btn-sm px-2"
+                className="btn btn-ghost btn-sm w-8 shrink-0 px-0 sm:w-auto sm:px-2"
                 title="Se déconnecter"
                 aria-label="Se déconnecter"
               >
@@ -164,7 +171,7 @@ export function TopNav({ user }: { user: SessionUser | null }) {
               </button>
             </div>
           ) : (
-            <Link href="/compte" className="btn btn-ghost btn-sm">
+            <Link href="/compte" className="btn btn-ghost btn-sm shrink-0 px-2">
               <User size={15} />
               <span className="hidden sm:inline">Connexion</span>
             </Link>
@@ -172,7 +179,7 @@ export function TopNav({ user }: { user: SessionUser | null }) {
 
           <button
             type="button"
-            className="btn btn-ghost btn-sm px-2 lg:hidden"
+            className="btn btn-ghost btn-sm w-8 shrink-0 px-0 lg:hidden"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label="Menu"
@@ -183,7 +190,7 @@ export function TopNav({ user }: { user: SessionUser | null }) {
       </div>
 
       {open ? (
-        <div className="border-t border-line/60 bg-ink-950/95 px-4 py-3 backdrop-blur-xl lg:hidden">
+        <div className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-line/60 bg-ink-950/95 px-3 py-3 backdrop-blur-xl sm:px-4 lg:hidden">
           <div className="grid gap-1">
             {LINKS.map((link) => {
               const Icon = link.icon;

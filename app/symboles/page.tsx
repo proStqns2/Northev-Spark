@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, Boxes, CircuitBoard, Ruler } from 'lucide-react';
 import { NormSymbolTile } from '@/components/studio/symbols/NormSymbol';
 import { KIND_COLORS } from '@/lib/studio/symbolSvg';
 import { COMPONENT_META, ComponentKind } from '@/lib/engine/types';
+import { HALF_SPAN, PLANNED_SYMBOLS, SYMBOLS } from '@/lib/studio/symbols';
 
 export const metadata: Metadata = {
   title: 'Symboles',
@@ -182,11 +183,85 @@ export default function SymbolesPage() {
                   <NormSymbolTile kind={kind} color={color} size={78} />
                 </div>
                 <p className="truncate text-[11.5px] font-medium">{meta.label}</p>
-                <p className="mt-0.5 line-clamp-2 text-[9.5px] leading-snug text-fg-mute">{meta.hint}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <span className="rounded bg-ink-850/80 px-1 py-0.5 font-mono text-[8.5px] text-fg-mute" title="Broche A (−x) et broche B (+x), repère local">
+                    A → B
+                  </span>
+                  <span className="rounded bg-ink-850/80 px-1 py-0.5 font-mono text-[8.5px] text-fg-mute" title="Portée admise, en cellules de grille">
+                    {SYMBOLS[kind].span.min}–{SYMBOLS[kind].span.max} cases
+                  </span>
+                  {SYMBOLS[kind].polarity ? (
+                    <span
+                      className="rounded bg-spark-amber/10 px-1 py-0.5 font-mono text-[8.5px] text-spark-amber"
+                      title={SYMBOLS[kind].polarity!.solver}
+                    >
+                      + en {SYMBOLS[kind].polarity!.plus.toUpperCase()}
+                    </span>
+                  ) : null}
+                  {SYMBOLS[kind].states ? (
+                    <span className="rounded bg-spark-cyan/10 px-1 py-0.5 font-mono text-[8.5px] text-spark-cyan">
+                      {SYMBOLS[kind].states!.join(' / ')}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 line-clamp-2 text-[9.5px] leading-snug text-fg-mute">{meta.hint}</p>
               </div>
             );
           })}
         </div>
+      </section>
+
+      <section className="panel mt-8 p-4" aria-label="Contrat 2D des dipôles">
+        <p className="text-[12px] font-semibold">Contrat 2D — ce que garantit chaque symbole</p>
+        <p className="mt-1 max-w-3xl text-[10.5px] leading-relaxed text-fg-mute">
+          Décrit dans <code className="text-fg-soft">lib/studio/symbols.ts</code> et vérifié par les tests
+          (<code className="text-fg-soft">lib/studio/symbols.test.ts</code>). Le rendu existant n’a pas été réécrit :
+          le contrat se superpose à lui et l’audite.
+        </p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              title: 'Deux bornes exactes',
+              body: `Broche A en −${HALF_SPAN} px, broche B en +${HALF_SPAN} px, confondues avec les nœuds du document : aucun fil ne peut flotter.`,
+            },
+            {
+              title: 'Repère local stable',
+              body: 'Origine au centre, +x de A vers B. La rotation et le miroir s’appliquent à la broche, jamais au symbole codé en dur.',
+            },
+            {
+              title: 'Boîte englobante',
+              body: 'Boîte en coordonnées locales, utilisée pour le survol, la sélection et l’export SVG.',
+            },
+            {
+              title: 'Signe explicite',
+              body: 'Source de tension : V(A) − V(B) = E. Source de courant : +I injecté en A. Passifs : convention récepteur A → B.',
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-lg border border-line/40 bg-ink-950/50 p-2.5">
+              <p className="text-[11.5px] font-medium text-fg-soft">{item.title}</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-fg-mute">{item.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-4 text-[11.5px] font-semibold text-fg-soft">Dipôles volontairement non supportés</p>
+        <p className="mt-1 text-[10px] leading-relaxed text-fg-mute">
+          Le solveur nodal est linéaire : ces symboles existent dans la littérature, pas encore dans le moteur. Ils sont
+          déclarés avec leur motif et un modèle de repli, au lieu de faire semblant de calculer.
+        </p>
+        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {PLANNED_SYMBOLS.map((planned) => (
+            <li key={planned.slug} className="rounded-lg border border-line/40 bg-ink-950/40 p-2">
+              <p className="flex items-center gap-1.5 text-[11px] font-medium text-fg-soft">
+                {planned.slug}
+                <span className="rounded bg-ink-850 px-1 py-0.5 font-mono text-[8.5px] text-fg-mute">
+                  repli : {COMPONENT_META[planned.fallback].label}
+                </span>
+              </p>
+              <p className="mt-0.5 text-[9.5px] leading-relaxed text-fg-mute">{planned.reason}</p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="panel mt-8 p-4">
@@ -202,8 +277,8 @@ export default function SymbolesPage() {
               body: 'Le canvas et les exports PNG/SVG/HTML partagent la même géométrie -50 → +50, donc rien ne se décale.',
             },
             {
-              title: 'Atelier Angular',
-              body: 'Le client Angular redessine le même répertoire de symboles pour rester visuellement identique.',
+              title: 'Contrat testé',
+              body: 'Chaque broche, boîte et convention de signe est vérifiée contre la géométrie du document et le solveur : un décalage casse les tests avant l’interface.',
             },
           ].map((item) => (
             <div key={item.title} className="rounded-lg border border-line/40 bg-ink-950/50 p-2.5">
