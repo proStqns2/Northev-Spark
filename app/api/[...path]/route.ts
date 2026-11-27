@@ -8,6 +8,7 @@ import { aiRoutes } from '@/lib/api/routes/ai';
 import { miscRoutes } from '@/lib/api/routes/misc';
 import { solveRoutes } from '@/lib/api/routes/solve';
 import { templateRoutes } from '@/lib/api/routes/templates';
+import { valueRoutes } from '@/lib/api/routes/values';
 
 /**
  * API du site — route handler Next.js natif.
@@ -32,6 +33,7 @@ const ROUTES: readonly ApiRoute[] = [
   ...miscRoutes,
   ...solveRoutes,
   ...templateRoutes,
+  ...valueRoutes,
 ];
 
 const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' } as const;
