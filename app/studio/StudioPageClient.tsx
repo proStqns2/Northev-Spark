@@ -9,6 +9,7 @@ interface Props {
   templateSlug?: string;
   templateDocJson: string | null;
   seeded?: boolean;
+  restoreDraft?: boolean;
   projectOptions?: Array<{ id: string; name: string; color: string }>;
   /** gabarit d'origine quand l'atelier est ouvert depuis le hub d'agents */
   agentId?: string;
@@ -39,6 +40,7 @@ export function StudioPageClient({
   templateSlug,
   templateDocJson,
   seeded = false,
+  restoreDraft = true,
   initialProjectId,
   templates,
   aiEnabled = false,
@@ -69,6 +71,7 @@ export function StudioPageClient({
         }
       }
       seeded={seeded}
+      restoreDraft={restoreDraft}
       templates={templates}
       projectId={initialProjectId}
       aiEnabled={aiEnabled}

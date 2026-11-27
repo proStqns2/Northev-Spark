@@ -6,6 +6,8 @@ import { templateDoc } from '@/lib/data/loadDoc';
 import { CircuitDoc } from '@/lib/engine/types';
 import { sanitizeDoc } from '@/lib/studio/doc';
 import { TEMPLATES } from '@/lib/data/templates';
+import { valueDoc } from '@/lib/express/model';
+import { normalizeValueInput } from '@/lib/express/params';
 
 export const metadata: Metadata = {
   title: 'Studio',
@@ -18,7 +20,14 @@ export const dynamic = 'force-dynamic';
 export default async function StudioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ circuit?: string; template?: string; agent?: string; project?: string }>;
+  searchParams: Promise<{
+    circuit?: string;
+    template?: string;
+    agent?: string;
+    project?: string;
+    /** montage R·C·L passé par l'URL : `/studio?values=R=4,7k C=100n L=10m` */
+    values?: string;
+  }>;
 }) {
   const params = await searchParams;
   const token = await readSessionToken();
@@ -41,6 +50,11 @@ export default async function StudioPage({
   if (!doc && params.template) {
     doc = templateDoc(params.template);
   }
+  // Le lien R·C·L ouvre un document explicite, sans restaurer un brouillon par-dessus.
+  const linkedValues = !doc && typeof params.values === 'string' ? params.values : undefined;
+  if (linkedValues) {
+    doc = valueDoc(normalizeValueInput(linkedValues));
+  }
   // Amorçage : plutôt qu'une grille vide (l'utilisateur ne sait pas quoi faire),
   // on ouvre sur un montage complet et calculable — il peut le vider d'un geste.
   const seeded = !doc;
@@ -48,6 +62,8 @@ export default async function StudioPage({
 
   return (
     <StudioPageClient
+      key={linkedValues}
+      restoreDraft={!linkedValues}
       user={user ? { id: user.id, name: user.name } : null}
       circuitId={params.circuit}
       templateSlug={params.template}

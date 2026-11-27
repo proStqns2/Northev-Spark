@@ -10,16 +10,16 @@ import { solveRoutes } from '@/lib/api/routes/solve';
 import { templateRoutes } from '@/lib/api/routes/templates';
 import { learningRoutes } from '@/lib/api/routes/learning';
 import { dataRoutes } from '@/lib/api/routes/data';
+import { valueRoutes } from '@/lib/api/routes/values';
 import { consume, identityOf, rateHeaders } from '@/lib/api/rateLimit';
 import { recordError, recordRequest } from '@/lib/api/metrics';
 
 /**
  * API du site — route handler Next.js natif.
  *
- * Il n'y a plus de serveur annexe : tout le contrôle (pages React, API,
- * authentification, temps réel) vit dans cette application Next.js. Une
- * requête `/api/…` arrive ici, la table ci-dessous choisit le handler et
- * renvoie directement une `Response` Web.
+ * L'authentification, les données et le temps réel restent sur Next.js. Les
+ * routes `/api/values` peuvent relayer l'analyse vers Express, avec un
+ * repli local si le service n'est pas disponible.
  */
 
 export const runtime = 'nodejs';
@@ -38,6 +38,7 @@ const ROUTES: readonly ApiRoute[] = [
   ...templateRoutes,
   ...learningRoutes,
   ...dataRoutes,
+  ...valueRoutes,
 ];
 
 const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' } as const;

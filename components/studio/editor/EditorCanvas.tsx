@@ -34,6 +34,8 @@ export interface EditorCanvasProps {
   setState: (updater: (state: EditorState) => EditorState) => void;
   onNotice?: (message: string, tone?: 'info' | 'ok' | 'warn') => void;
   onTemplate?: (slug: string) => void;
+  /** Nouvelle demande de cadrage après le chargement d’un montage. */
+  fitRevision?: number;
   /** grille alignée sur 24 px : exposé pour les tests visuels */
   className?: string;
 }
@@ -65,7 +67,7 @@ const KIND_COLOR: Record<string, string> = {
   vccs: '#c9a0ff',
 };
 
-export function EditorCanvas({ state, setState, onNotice, onTemplate, className }: EditorCanvasProps) {
+export function EditorCanvas({ state, setState, onNotice, onTemplate, fitRevision = 0, className }: EditorCanvasProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState(DEFAULT_SIZE);
@@ -146,13 +148,13 @@ export function EditorCanvas({ state, setState, onNotice, onTemplate, className 
     });
   }, [size.height, size.width, state.doc]);
 
-  // zoom initial agréable au premier rendu
-  const fittedOnce = useRef(false);
+  // Cadrer à l’ouverture et après un montage R·C·L, pas à chaque geste.
+  const lastFitRevision = useRef<number | null>(null);
   useEffect(() => {
-    if (fittedOnce.current) return;
-    fittedOnce.current = true;
+    if (lastFitRevision.current === fitRevision) return;
+    lastFitRevision.current = fitRevision;
     fit();
-  }, [fit]);
+  }, [fit, fitRevision]);
 
   /* ---------------- gestes ---------------- */
 

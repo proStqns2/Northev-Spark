@@ -16,9 +16,10 @@ Ce document décrit les décisions qui répondent aux deux problèmes signalés 
 - **Compte** : inscription, connexion, mot de passe, préférences. Aucune route
   d'authentification n'appelle un fournisseur de modèle. `GET /api/auth/status`
   renvoie `requiresAi: false` — c'est vérifiable et testé.
-- **Studio** : construction et calcul entièrement locaux (solveur MNA dans
-  `lib/engine/`). Les routes `/api/solve`, `/api/circuits` ne consultent jamais
-  l'IA.
+- **Studio** : construction et calcul sans IA (solveur MNA dans
+  `lib/engine/`). `/api/values/analyze` peut déléguer la construction et le
+  calcul du bloc R·C·L à Express, qui réutilise le même solveur. En l’absence
+  du service, Next.js calcule sur place.
 - **Assistant** : activé par trois conditions cumulatives
   (`AI_ASSISTANT_ENABLED`, une clé fournisseur, `prefs.ai` du compte). Sans
   elles, `/api/ai/*` répond `403` avec un code `AI_OFF` et un lien vers
@@ -52,7 +53,7 @@ calcul → annulation.
 - MongoDB est un **miroir** : `/api/data/backup`, `scripts/mongo-migrate.mjs`.
   Absent, tout fonctionne ; présent, on obtient une copie interrogeable.
 - PySpark tourne **hors du processus web** (`analytics/spark_academy.py`).
-  C'est le seul composant non-Next, et il est facultatif par construction.
+  Il n’est pas nécessaire pour démarrer le site.
 - Aucune donnée nominative dans les exports : identifiants hachés `anon_…`,
   empreintes de jetons, longueurs de hachés de mot de passe.
 
@@ -60,7 +61,7 @@ calcul → annulation.
 
 | Décision | Raison |
 | --- | --- |
-| Un seul processus Next.js | Contrainte du projet : une commande, un serveur, tout le contrôle dans React/Next |
+| Next.js autonome | Une commande suffit pour le studio, le compte et l’API ; Express est facultatif (`npm run dev:all` lance les deux) |
 | Pas de base obligatoire | Le site doit démarrer sans service externe |
 | IA désactivée par défaut | Elle ne doit jamais conditionner l'inscription ou le dessin |
 | Tests sans navigateur | L'environnement n'a pas de Chromium ; les tests jsdom couvrent les gestes |

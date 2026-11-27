@@ -122,6 +122,35 @@ function shiftCell(cell: string, dx: number, dy: number): string {
   return pointToCell(p.x + dx, p.y + dy);
 }
 
+/** Pose un bloc à droite du montage courant sans modifier ses connexions ni ses réglages. */
+export function appendDoc(doc: CircuitDoc, block: CircuitDoc): CircuitDoc {
+  if (!block.components.length) return doc;
+  if (!doc.components.length) return block;
+
+  const columns = (parts: Component[]) =>
+    parts.flatMap(({ a, b, ctrl }) => (ctrl ? [a, b, ctrl.a, ctrl.b] : [a, b]))
+      .map((cell) => cellToPoint(cell)?.x)
+      .filter((x): x is number => x !== undefined && Number.isFinite(x));
+  const right = columns(doc.components).reduce((max, x) => Math.max(max, x), -Infinity);
+  const left = columns(block.components).reduce((min, x) => Math.min(min, x), Infinity);
+  const shift = (Number.isFinite(right) ? right : 0) + 4 - (Number.isFinite(left) ? left : 0);
+  const move = (node: string) => shiftCell(node, shift, 0);
+  const ids = new Set(doc.components.map((part) => part.id));
+  const extra = block.components.map((part) => {
+    let id = part.id;
+    for (let suffix = 2; ids.has(id); suffix += 1) id = `${part.id}_${suffix}`;
+    ids.add(id);
+    return {
+      ...part,
+      id,
+      a: move(part.a),
+      b: move(part.b),
+      ...(part.ctrl ? { ctrl: { ...part.ctrl, a: move(part.ctrl.a), b: move(part.ctrl.b) } } : {}),
+    };
+  });
+  return { ...doc, components: [...doc.components, ...extra] };
+}
+
 /** Redimensionne une branche en conservant son point d'ancrage */
 export function resizeComponent(
   doc: CircuitDoc,

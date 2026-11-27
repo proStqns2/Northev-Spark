@@ -1,6 +1,6 @@
 /**
  * Vérifie l'atelier dans un DOM réel (jsdom) : pose d'une pièce, déplacement,
- * outil fil, calcul. Ce script tourne contre le serveur local déjà démarré.
+ * outil fil, calcul et barre R·C·L. Ce script tourne contre le serveur local déjà démarré.
  *
  * Il ne remplace pas un navigateur, mais il prouve que la chaîne
  * « clic palette → clic plan → pièce dans le document → calcul » fonctionne,
@@ -34,6 +34,7 @@ const dom = new JSDOM(html, {
     ]) {
       if (!(key in window) && key in globalThis) window[key] = globalThis[key];
     }
+    window.fetch = (url, options) => fetch(new URL(url, window.location.href), options);
     window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
     window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
     window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
@@ -130,6 +131,31 @@ check('le calcul renvoie une valeur', /V\(|Eth|Rth/.test(bodyText), /Eth/.test(b
 doc_key(win, 'z', { ctrlKey: true });
 await new Promise((resolve) => setTimeout(resolve, 160));
 check('Ctrl+Z est branché', partsOf().length >= initialCount, `${partsOf().length} pièces`);
+
+// --- le montage R·C·L calculé se charge ou s’ajoute au plan sans perdre l’historique ---
+const valueBar = document.querySelector('[aria-label="Barre de valeurs R, C, L du montage"]');
+const valueAction = (label) => [...(valueBar?.querySelectorAll('button') ?? [])].find((button) => button.textContent.trim() === label);
+const appendButton = valueAction('Ajouter');
+const loadButton = valueAction('Charger');
+check('la barre R·C·L a reçu le montage calculé', Boolean(appendButton && !appendButton.disabled && loadButton && !loadButton.disabled));
+
+const snapshot = () => partsOf().map((part) => ['data-part-id', 'data-a', 'data-b'].map((attr) => part.getAttribute(attr)).join('|'));
+const beforeValues = snapshot();
+appendButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 120));
+const afterAppend = snapshot();
+check('Ajouter pose le bloc R·C·L sans modifier les pièces présentes',
+  afterAppend.length === beforeValues.length + 7 && beforeValues.every((part, index) => afterAppend[index] === part));
+
+loadButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 120));
+check('Charger remplace le plan par le montage R·C·L',
+  partsOf().length === 7 && Boolean(canvas.querySelector('[data-kind="inductor"]')) && Boolean(canvas.querySelector('[data-kind="capacitor"]')));
+for (let action = 0; action < 2; action += 1) {
+  doc_key(win, 'z', { ctrlKey: true });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+check('Annuler restaure les pièces et leurs positions', JSON.stringify(snapshot()) === JSON.stringify(beforeValues));
 
 check('aucune erreur JavaScript', errors.length === 0, errors[0]?.slice(0, 120) ?? '');
 

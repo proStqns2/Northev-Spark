@@ -23,7 +23,10 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
+import { ValueBar } from '@/components/studio/ValueBar';
 import type { CircuitDoc, Component } from '@/lib/engine/types';
+import type { ValueModel } from '@/lib/express/model';
+import { appendDoc } from '@/lib/studio/doc';
 import { useCircuitEngine } from '@/hooks/useCircuitEngine';
 import { abs } from '@/lib/engine/complex';
 import { formatSI } from '@/lib/engine/format';
@@ -76,6 +79,7 @@ export interface EditorShellProps {
   templateSlug?: string;
   initialDoc: CircuitDoc;
   seeded: boolean;
+  restoreDraft?: boolean;
   templates: Array<{ slug: string; title: string; subtitle?: string; components: number }>;
   projectId?: string;
   aiEnabled?: boolean;
@@ -95,6 +99,7 @@ export function EditorShell({
   templateSlug,
   initialDoc,
   seeded,
+  restoreDraft = true,
   templates,
   projectId,
   aiEnabled = false,
@@ -108,6 +113,7 @@ export function EditorShell({
   const [showHelp, setShowHelp] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [fitRevision, setFitRevision] = useState(0);
   const noticeId = useRef(0);
 
   const { equivalent, solution } = useCircuitEngine(editor.doc);
@@ -129,7 +135,7 @@ export function EditorShell({
   /* ---------- restauration du brouillon ---------- */
 
   useEffect(() => {
-    if (seeded || templateSlug || circuitId) return;
+    if (!restoreDraft || seeded || templateSlug || circuitId) return;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
@@ -208,6 +214,21 @@ export function EditorShell({
       notify('Exemple chargé : tout est modifiable.', 'ok');
     },
     [notify],
+  );
+
+  const applyValueModel = useCallback(
+    (model: ValueModel, { replace }: { replace: boolean }) => {
+      const label = replace ? 'Montage R·C·L chargé' : 'Bloc R·C·L ajouté';
+      apply((current) => {
+        const doc = replace ? model.doc : appendDoc(current.doc, model.doc);
+        return setTool(replaceDoc(current, doc, label), { mode: 'select' });
+      });
+      setFitRevision((revision) => revision + 1);
+      setTab('resultats');
+      setPanelOpen(true);
+      notify(`${label}. L’action est annulable.`, 'ok');
+    },
+    [apply, notify],
   );
 
   const change = useCallback(
@@ -403,6 +424,8 @@ export function EditorShell({
         </div>
       </header>
 
+      <ValueBar onApply={applyValueModel} compact />
+
       {/* corps : palette / plan / inspecteur */}
       <div className="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[210px_minmax(0,1fr)_248px]">
         <div className="order-2 min-h-0 lg:order-1">
@@ -422,6 +445,7 @@ export function EditorShell({
               setState={setEditor}
               onNotice={notify}
               onTemplate={loadTemplate}
+              fitRevision={fitRevision}
             />
           </div>
 

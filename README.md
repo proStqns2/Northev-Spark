@@ -17,9 +17,19 @@ Construit avec **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS** et 
 | `/multiwork` | Ateliers collaboratifs : code à **5 chiffres**, présence, chat, synchronisation temps réel |
 | `/premium` | Hub de **5 agents IA** (Théo, Nora, Impeda, Volt, Mentor) avec moteur local + OpenAI/Gemini |
 | `/export` | Export **PNG, SVG, HTML, JSON, Markdown** + carte d'invitation PNG avec code d'atelier |
+| `/express` | **Barre de valeurs R · C · L** en grand + documentation du service Express qui la sert |
 
 ### Le studio
 
+- **Barre de valeurs R · C · L** (sous la barre d'outils) : trois champs compacts qui
+  acceptent la notation d'ingénieur (`4,7k`, `100nF`, `10 mH`, `1e-6`), plus E et f.
+  Chaque frappe relance l'analyse : le service **Express** construit un diviseur
+  `R / (L ∥ C)`, le résout et renvoie `U_th`, `Z_th`, `I_N`, la résonance `f₀`,
+  le facteur de qualité `Q`, `X_L`, `X_C` et la puissance maximale. **Charger**
+  remplace le montage, **Ajouter** pose le bloc à droite sans modifier le
+  câblage ni le régime du circuit existant. Les deux actions sont annulables
+  dans l’atelier. Le badge indique qui a répondu (`express · leader` ou
+  `moteur next` en repli).
 - **Grille magnétique** : tracé au glisser, accrochage aux nœuds, déplacement, rotation, inversion, duplication.
 - **Palette** : sources E/I, sources liées (VCVS/VCCS), R, C, L, potentiomètre, lampe, fils, interrupteurs, ampèremètre, voltmètre.
 - **Animation des électrons** : la vitesse et le sens dérivent du courant réellement calculé (`offset-path` SVG, désactivé si `prefers-reduced-motion`).
@@ -40,6 +50,44 @@ Construit avec **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS** et 
 | `A`, `B`, `M` | poser la borne A, la borne B, la masse |
 | `V`, `E` | outil sélection, outil gomme |
 | `Ctrl+S` | enregistrer le montage |
+
+### Barre de valeurs R · C · L et service Express
+
+Le calcul de la barre vit dans `lib/express/` et sert **deux** points d'entrée :
+
+| Entrée | Rôle |
+|---|---|
+| `POST /api/values/analyze` (Next) | relais : transmet à Express si `EXPRESS_URL` répond, sinon calcule sur place (`x-spark-service: next`) |
+| `POST /api/v1/analyze` (Express, port 4001) | **leader du montage** : validation, cache 30 s, journal, CORS aperçus |
+| `GET /api/v1/analyze?r=1k&c=100n&l=10m&f=50` | même calcul en lecture directe |
+| `POST /api/v1/preview` | SVG du montage construit |
+| `GET /api/v1/values` · `/api/v1/templates` · `/api/v1/health` | bornes/préfixes, bibliothèque résolue, état du service |
+
+Le montage canonique est un **diviseur `R / (L ∥ C)`** fermé sur la source
+(la source débite réellement, donc le tableau U/I/P par branche est parlant) :
+
+```
+U_th = E · Z_LC / (R + Z_LC)      Z_th = R ∥ Z_LC
+Z_LC = jωL / (1 − ω²LC)           f₀ = 1/(2π√(LC))     Q = (1/R)·√(L/C)
+```
+
+La même équation est vérifiée dans `lib/express/model.test.ts` (U_th, Z_th,
+I_N, f₀, Q, courants réels) et le comportement continu (bobine = fil → sortie
+nulle) est testé aussi. Aucune formule n'est inventée : le service appelle le
+solveur MNA du dépôt (`lib/engine`), il n'en existe pas de copie.
+
+```bash
+npm run express          # service seul, tsx watch → http://localhost:4001
+npm run dev:all          # Express (4001) + site Next (3000) ensemble
+npm run express:start    # service en production (tsx, aucune build)
+```
+
+Variables : `EXPRESS_PORT` (4001), `EXPRESS_URL` (vue par Next pour le relais),
+`NEXT_PUBLIC_EXPRESS_URL` (appel direct depuis le navigateur),
+`EXPRESS_SERVICE_KEY` (en-tête `x-spark-key` exigé sur les POST),
+`EXPRESS_ALLOWED_ORIGIN` (CORS ; par défaut `*.e2b.app`, `*.e2b.dev`, localhost).
+Si Express est arrêté, le studio continue de fonctionner : le relais calcule
+localement et la barre affiche `moteur next`.
 
 ### Le moteur (`lib/engine/`)
 
@@ -88,10 +136,11 @@ npx tsx scripts/seed-demo.ts
 
 ```bash
 npx tsx scripts/verify-engine.ts   # 8 cas analytiques (npm run verify)
-npm test                           # 20 tests unitaires
+npm test                           # solveur, atelier et API
+npm run check:studio               # interactions dans l’atelier, site déjà démarré
 ```
 
-`npm test` couvre le solveur MNA (diviseur, Wheatstone, superposition, RC/RLC en alternatif), le simulateur de charge `R_L`, les messages du canal multi-onglets, la rotation des dipôles et le rendu SSR des schémas équivalents.
+`npm test` couvre le solveur MNA, le simulateur de charge `R_L`, le canal multi-onglets, l’atelier (pose, câblage, historique), le rendu des schémas équivalents, l’API et la barre R·C·L (préfixes SI, résultats analytiques et rendu).
 
 ---
 
@@ -171,14 +220,17 @@ Les cinq agents **calculent réellement** : ils consomment le solveur nodal et l
 | **Route handlers Next** | API REST native : comptes, montages, projets, IA, solveur | `app/api/[...path]/route.ts`, `lib/api/routes/` |
 | **Moteur + données** | MNA complexe, agents IA, persistance Supabase | `lib/` |
 
-Il n'y a **plus de serveur annexe ni de second frontend** : le site entier —
-interface React, contrôle des accès, API, flux temps réel — vit dans cette
-application Next.js. Une commande suffit :
+Le site entier — interface React, contrôle des accès, API, flux temps réel —
+vit dans cette application Next.js. Une commande suffit :
 
 ```bash
 npm run dev      # http://localhost:3000  (site + API)
 npm run build && npm start
 ```
+
+Le seul processus annexe est **facultatif** : le service Express (`server/express.ts`,
+port 4001) qui sert la barre de valeurs R·C·L et relaie éventuellement vers Next
+(`NEXT_INTERNAL_URL`). Sans lui, tout fonctionne en repli local.
 
 L'API est répartie dans `lib/api/routes/*.ts` sous forme de tables
 `[verbe, chemin, handler]`, exécutées par le route handler
@@ -188,7 +240,7 @@ appelle sous `/api/*` est exécuté dans le même processus que le rendu React.
 
 Routes exposées : `/api/auth/*`, `/api/circuits`, `/api/projects/*`,
 `/api/solve`, `/api/ai/*`, `/api/templates`, `/api/profile/*`, `/api/rooms/*`,
-`/api/import`, `/api/health`.
+`/api/values/*`, `/api/import`, `/api/health`.
 
 Temps réel : `/api/rooms/:code/events` (SSE — présence, curseurs, révisions,
 chat) et le canal `BroadcastChannel` côté navigateur, tous deux dans Next.
