@@ -16,6 +16,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  SlidersHorizontal,
   Sparkles,
   Target,
   User,
@@ -42,6 +43,7 @@ const LINKS = [
   { href: '/agents', label: 'Agents', icon: Sparkles },
   { href: '/premium', label: 'Premium', icon: Crown, badge: 'IA' },
   { href: '/export', label: 'Export', icon: FlaskConical },
+  { href: '/express', label: 'Service R·C·L', icon: SlidersHorizontal, badge: 'API' },
 ];
 
 export function TopNav({ user }: { user: SessionUser | null }) {

@@ -33,6 +33,7 @@ import { CircuitCanvas, Tool } from './CircuitCanvas';
 import { Palette } from './Palette';
 import { BuildBox } from './BuildBox';
 import { ValuePalette } from './ValuePalette';
+import { ValueBar } from './ValueBar';
 import { SetupGuide } from './SetupGuide';
 import { GeminiHelp } from './GeminiHelp';
 import { Inspector } from './Inspector';
@@ -50,7 +51,8 @@ import {
   downloadPng,
   downloadSvg,
 } from '@/lib/studio/export';
-import { sanitizeDoc } from '@/lib/studio/doc';
+import { appendDoc, sanitizeDoc } from '@/lib/studio/doc';
+import type { ValueModel } from '@/lib/express/model';
 import { useToast } from '@/components/ui/Toast';
 import type { LiveCursor, LiveParticipant } from '@/hooks/useCollaboration';
 
@@ -201,6 +203,34 @@ export function StudioShell({
     [studio, success, error],
   );
 
+
+  /* ------------------------------------------------- barre de valeurs R, C, L */
+  /**
+   * Charge (ou ajoute) le montage R·C·L analysé par le service Express.
+   * « Charger » remplace la grille ; « Ajouter » décale le bloc pour le poser
+   * à droite du montage existant, sans rien perdre.
+   */
+  const applyValueModel = useCallback(
+    (model: ValueModel, options: { replace: boolean }) => {
+      if (!model?.doc) {
+        error('Montage indisponible', 'Relancez l’analyse de la barre de valeurs.');
+        return;
+      }
+      if (options.replace || doc.components.length === 0) {
+        studio.reset(model.doc);
+        setTool({ mode: 'select' });
+        success(
+          'Montage R·C·L chargé',
+          `${model.input.r} Ω · C · L dans la grille — équivalent calculé par ${model.source === 'express' ? 'Express' : 'le moteur local'}.`,
+        );
+        return;
+      }
+      setDoc(appendDoc(doc, model.doc), { commit: true });
+      success('Montage R·C·L ajouté', 'Le bloc a été posé à droite du montage existant.');
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc, setDoc, success, error],
+  );
 
   /* ------------------------------------------------------- hydratation locale */
   useEffect(() => {
@@ -628,6 +658,9 @@ export function StudioShell({
           </Link>
         </div>
       </div>
+
+      {/* --------------------------------------------- barre de valeurs R, C, L */}
+      <ValueBar onApply={applyValueModel} compact />
 
       {/* ------------------------------------------------------------- workspace */}
       <div className="flex min-h-0 flex-1">

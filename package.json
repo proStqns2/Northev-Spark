@@ -9,7 +9,7 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx lib/api/hardening.test.ts lib/studio/editor.test.ts",
+    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx lib/api/hardening.test.ts lib/studio/editor.test.ts lib/express/model.test.ts components/studio/valueBar.render.test.tsx",
     "verify": "tsx scripts/verify-engine.ts",
     "check:ui": "node scripts/errors-check.mjs",
     "check:clicks": "node scripts/interact-check.mjs",
@@ -17,13 +17,17 @@
     "check:studio": "node scripts/studio-check.mjs",
     "analytics:demo": "python3 analytics/spark_academy.py --input analytics/data/demo.jsonl --sample",
     "mongo:dry": "node scripts/mongo-migrate.mjs --dry-run",
-    "ai:check": "node scripts/ai-selftest.mjs"
+    "ai:check": "node scripts/ai-selftest.mjs",
+    "express": "tsx watch server/express.ts",
+    "express:start": "tsx server/express.ts",
+    "dev:all": "node scripts/dev-all.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@supabase/supabase-js": "^2.119.2",
     "dotenv": "^18.0.10",
+    "express": "^5.3.0",
     "lucide-react": "^0.468.0",
     "next": "15.5.29",
     "perfect-cursors": "^1.0.5",
@@ -32,18 +36,19 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.2",
     "@types/ws": "^8.18.2",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^26.1.0",
     "playwright": "^1.49.1",
     "postcss": "^8.4.49",
     "sharp": "^0.35.5",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",
-    "typescript": "^5.7.2",
-    "jsdom": "^26.1.0"
+    "typescript": "^5.7.2"
   },
   "engines": {
     "node": "22.x"
