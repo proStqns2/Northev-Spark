@@ -9,7 +9,7 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx",
+    "test": "tsx --test lib/engine/solver.test.ts lib/collab/channel.test.ts lib/studio/doc.test.ts components/studio/equivalent.render.test.tsx lib/api/hardening.test.ts",
     "verify": "tsx scripts/verify-engine.ts",
     "check:ui": "node scripts/errors-check.mjs",
     "check:clicks": "node scripts/interact-check.mjs",

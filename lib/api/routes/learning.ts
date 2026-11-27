@@ -7,6 +7,14 @@ import { challengeFor, checkChallengeAnswer, recentChallenges } from '@/lib/lear
 import { BADGES } from '@/lib/learning/badges';
 import { MODULES, TOTAL_LESSONS } from '@/lib/learning/curriculum';
 import { levelProgress, todayIso } from '@/lib/learning/xp';
+import { GLOSSARY, GLOSSARY_TAGS } from '@/lib/learning/glossary';
+import { FORMULAS, formulasByCategory } from '@/lib/learning/formulas';
+import { QUIZ_BANK } from '@/lib/learning/quiz-bank';
+import { cached, jsonWithEtag } from '../cache';
+import { pageHeaders, parsePageQuery, queryPage } from '../pagination';
+import { metricsSnapshot } from '../metrics';
+import { cacheInfo } from '../cache';
+import { rateStats } from '../rateLimit';
 
 /**
  * Routes de l’Académie.
@@ -161,6 +169,64 @@ export const learningRoutes: ApiRoute[] = [
         gainedXp: result.gainedXp,
         newBadges: result.newBadges.map((id) => BADGES.find((badge) => badge.id === id)).filter(Boolean),
         level: levelProgress(result.progress.xp),
+      });
+    },
+  ],
+  [
+    'GET',
+    '/api/glossary',
+    async (request, reply) => {
+      const page = parsePageQuery(request.query, { defaultSize: 24, defaultSort: 'term' });
+      const payload = await cached('catalog:glossary', { ttlMs: 60_000, staleMs: 300_000 }, () => ({
+        total: GLOSSARY.length,
+        tags: GLOSSARY_TAGS,
+      }));
+      const result = queryPage(GLOSSARY, page, {
+        search: (entry) => [entry.term, entry.short, entry.long, entry.formula ?? '', entry.unit ?? '', ...entry.tags],
+        sort: (entry, field) => {
+          if (field === 'term') return entry.term;
+          if (field === 'tags') return entry.tags[0] ?? '';
+          return entry.term;
+        },
+        extraFilter: (entry) => (request.query.tag ? entry.tags.includes(request.query.tag) : true),
+      });
+      for (const [key, value] of Object.entries(pageHeaders(result))) reply.header(key, value);
+      return reply.send({ ...result, catalog: payload });
+    },
+  ],
+  [
+    'GET',
+    '/api/catalog',
+    async (request, reply) => {
+      const payload = await cached('catalog:academy', { ttlMs: 120_000, staleMs: 600_000 }, () => ({
+        modules: MODULES.map((module) => ({
+          slug: module.slug,
+          title: module.title,
+          summary: module.subtitle,
+          level: module.level,
+          lessons: module.lessons.length,
+        })),
+        lessons: TOTAL_LESSONS,
+        glossary: GLOSSARY.length,
+        formulas: FORMULAS.length,
+        questions: QUIZ_BANK.length,
+        badges: BADGES.length,
+        formulaGroups: formulasByCategory().map((group) => ({ category: group.category, label: group.label, count: group.items.length })),
+      }));
+      return jsonWithEtag(request.headers, payload, { maxAge: 120, staleWhileRevalidate: 600, headers: { 'X-Catalog': 'academy' } });
+    },
+  ],
+  [
+    'GET',
+    '/api/metrics',
+    async (request, reply) => {
+      const user = await currentUser(request);
+      if (!user) return fail(reply, 401, 'Non authentifié.');
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({
+        metrics: metricsSnapshot(),
+        cache: cacheInfo(),
+        limits: rateStats(),
       });
     },
   ],

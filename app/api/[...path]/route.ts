@@ -9,6 +9,8 @@ import { miscRoutes } from '@/lib/api/routes/misc';
 import { solveRoutes } from '@/lib/api/routes/solve';
 import { templateRoutes } from '@/lib/api/routes/templates';
 import { learningRoutes } from '@/lib/api/routes/learning';
+import { consume, identityOf, rateHeaders } from '@/lib/api/rateLimit';
+import { recordError, recordRequest } from '@/lib/api/metrics';
 
 /**
  * API du site — route handler Next.js natif.
@@ -85,17 +87,60 @@ async function dispatch(request: Request, context: { params: Promise<{ path?: st
     headers[key] = value;
   });
 
+  const startedAt = Date.now();
+  const method = request.method.toUpperCase();
+
+  // 1. quota par identité et par famille de routes
+  const decision = consume(identityOf(headers), method, pathname);
+  if (!decision.allowed) {
+    const body = {
+      error: 'Trop de requêtes : ralentissez un instant.',
+      retryAfter: decision.retryAfter,
+      policy: decision.rule,
+    };
+    const limited = Response.json(body, {
+      status: 429,
+      headers: { ...NO_STORE, ...rateHeaders(decision) },
+    });
+    recordRequest({ method, path: pathname, status: 429, durationMs: Date.now() - startedAt, at: startedAt });
+    return limited;
+  }
+
   const reply = new ApiReply().header('Cache-Control', NO_STORE['Cache-Control']);
   try {
     const result = await matched.handler(
       { body: await readBody(request), params: matched.params, query, headers, url: request.url },
       reply,
     );
-    return result instanceof Response ? result : reply.toResponse();
+    const response = result instanceof Response ? result : reply.toResponse();
+    const durationMs = Date.now() - startedAt;
+    applyTelemetry(response, decision, durationMs);
+    recordRequest({ method, path: pathname, status: response.status, durationMs, at: startedAt });
+    return response;
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Erreur inattendue.';
-    console.error(`[api] ${request.method} ${pathname} →`, e);
-    return Response.json({ error: message }, { status: 500, headers: NO_STORE });
+    console.error(`[api] ${method} ${pathname} →`, e);
+    recordError(method, pathname, 500, message);
+    recordRequest({ method, path: pathname, status: 500, durationMs: Date.now() - startedAt, at: startedAt });
+    return Response.json({ error: message }, { status: 500, headers: { ...NO_STORE, ...rateHeaders(decision) } });
+  }
+}
+
+/**
+ * Ajoute les en-têtes d’observabilité à une réponse déjà construite.
+ * `Response.headers` est mutable tant que la réponse n’a pas été envoyée ;
+ * on protège quand même l’appel (certaines réponses, comme les redirections
+ * issues de `fetch`, sont immuables).
+ */
+function applyTelemetry(response: Response, decision: ReturnType<typeof consume>, durationMs: number): void {
+  try {
+    for (const [key, value] of Object.entries(rateHeaders(decision))) response.headers.set(key, value);
+    response.headers.set('X-Response-Time', `${durationMs}ms`);
+    response.headers.set('Server-Timing', `app;dur=${durationMs}`);
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  } catch {
+    // réponse immuable : on n’échoue jamais à cause d’un en-tête
   }
 }
 
