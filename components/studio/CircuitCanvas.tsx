@@ -18,6 +18,8 @@ import { ElectronFlow, WireGlow } from './ElectronFlow';
 import type { Reading } from '@/lib/engine/solver';
 import { cn } from '@/lib/utils';
 import { CursorOverlay, PresencePills } from './cursors/CursorOverlay';
+import { CursorPreferencesButton } from './cursors/CursorPreferences';
+import { useCursorPreferences } from '@/hooks/useCursorPreferences';
 import type { LiveCursor, LiveParticipant } from '@/hooks/useCollaboration';
 
 export type Tool =
@@ -52,6 +54,8 @@ interface Props {
     vh: number;
     hover: string | null;
     tool: string;
+    /** bouton enfoncé : les pairs voient le clic, pas seulement le survol */
+    pressed?: boolean;
   }) => void;
   /** diffusion du curseur aux autres onglets (BroadcastChannel) */
   onTabCursor?: (x: number, y: number) => void;
@@ -453,6 +457,15 @@ export function CircuitCanvas({
   /* ------------------------------------------- présence : position du curseur */
   const [localPointer, setLocalPointer] = useState<{ x: number; y: number } | null>(null);
   const pointingRef = useRef(false);
+  /** pair épinglé : son curseur reste en évidence, les autres s'effacent */
+  const [followId, setFollowId] = useState<string | null>(null);
+  const { prefs: cursorPrefs } = useCursorPreferences();
+
+  // le pair suivi disparaît (il a quitté ou s'est mis en veille) : on relâche
+  useEffect(() => {
+    if (!followId) return;
+    if (!collaborators.some((cursor) => cursor.id === followId)) setFollowId(null);
+  }, [collaborators, followId]);
 
   // conversions grille → pixels écran (les curseurs distants sont en coordonnées de grille)
   const gridToPixel = useCallback(
@@ -471,7 +484,7 @@ export function CircuitCanvas({
 
   const lastTabCursor = useRef(0);
   const publishPointer = useCallback(
-    (event: React.PointerEvent<SVGSVGElement>, over?: string | null) => {
+    (event: React.PointerEvent<SVGSVGElement>, over?: string | null, pressed?: boolean) => {
       const local = toSvg(event);
       const now = Date.now();
       // diffusion multi-onglets (~10 Hz) — indépendante du canal serveur
@@ -493,6 +506,7 @@ export function CircuitCanvas({
         vh,
         hover: over ?? null,
         tool: tool.mode,
+        ...(pressed === undefined ? {} : { pressed }),
       });
     },
     [onCursorMove, onTabCursor, toSvg, view, tool.mode],
@@ -536,9 +550,15 @@ export function CircuitCanvas({
           tool.mode === 'select' ? 'cursor-default' : 'cursor-crosshair',
           panning && 'cursor-grabbing',
         )}
-        onPointerDown={handlePointerDown}
+        onPointerDown={(event) => {
+          handlePointerDown(event);
+          publishPointer(event, hover, true);
+        }}
         onPointerMove={handlePointerMoveWithPresence}
-        onPointerUp={handlePointerUp}
+        onPointerUp={(event) => {
+          handlePointerUp(event);
+          publishPointer(event, hover, false);
+        }}
         onPointerLeave={() => {
           setHover(null);
           setPanning(null);
@@ -816,12 +836,21 @@ export function CircuitCanvas({
         cursors={collaborators}
         toPx={gridToPixel}
         localCursor={onCursorMove ? localPointer : null}
+        prefs={cursorPrefs}
+        followId={followId}
+        onFollow={setFollowId}
       />
 
       {/* --------------------------- légende / aides --------------------------- */}
       {showPresencePills ? (
         <div className="pointer-events-auto absolute right-12 top-3 z-20">
-          <PresencePills cursors={collaborators} participants={participants} localId={localId} />
+          <PresencePills
+            cursors={collaborators}
+            participants={participants}
+            localId={localId}
+            followId={followId}
+            onFollow={setFollowId}
+          />
         </div>
       ) : null}
 
@@ -833,6 +862,7 @@ export function CircuitCanvas({
         <span className="chip bg-ink-950/80 backdrop-blur">ctrl+z : annuler</span>
       </div>
       <div className="absolute right-3 top-3 flex flex-col items-stretch gap-1.5">
+        {collaborators.length ? <CursorPreferencesButton /> : null}
         <button
           type="button"
           onClick={() => zoomBy(0.82)}

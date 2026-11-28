@@ -2,6 +2,7 @@ import {
   ensurePresence,
   findRoom,
   livePresence,
+  roomSignalsFor,
 } from '@/lib/db/repo';
 import { expireLocks, lockSummary } from '@/lib/collab/locks';
 import { sanitizeDoc } from '@/lib/collab/merge';
@@ -41,6 +42,9 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
   let lastMessageId: string | null = null;
   let lastLockSignature = '';
   let lastTypingSignature = '';
+  /* relais WebRTC : on ne renvoie que les signaux jamais transmis */
+  let signalSince = Date.now();
+  const emittedSignals = new Set<string>();
 
   return {
     async start() {
@@ -48,6 +52,9 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
       if (!room) return null;
       await ensurePresence(code, user);
       lastMessageId = room.messages.at(-1)?.id ?? '';
+      // on tolère les signaux partis juste avant l'ouverture du flux
+      signalSince = Date.now() - 1500;
+      emittedSignals.clear();
       return [
         {
           event: 'ready',
@@ -68,7 +75,12 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
       const participants = livePresence(room);
 
       const presenceSignature = participants
-        .map((p) => `${p.id}:${p.name}:${p.color}:${p.activity ?? ''}:${p.idle ? 1 : 0}`)
+        .map(
+          (p) =>
+            `${p.id}:${p.name}:${p.color}:${p.activity ?? ''}:${p.idle ? 1 : 0}:${
+              p.media?.live ? `m${p.media.mic ? 1 : 0}${p.media.cam ? 1 : 0}` : ''
+            }:${p.media?.session ?? ''}`,
+        )
         .sort()
         .join('|');
       if (presenceSignature !== lastPresenceSignature) {
@@ -89,14 +101,31 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
             avatar: p.avatar,
             x: cursor.x,
             y: cursor.y,
+            // fenêtre visible du pair (mini-carte « où regarde-t-il »)
+            vx: cursor.vx ?? null,
+            vy: cursor.vy ?? null,
+            vw: cursor.vw ?? null,
+            vh: cursor.vh ?? null,
             hover: cursor.hover ?? null,
             tool: cursor.tool ?? null,
+            pointer: cursor.pointer ?? null,
+            selection: cursor.selection ?? null,
+            pressed: Boolean(cursor.pressed),
             idle: age > CURSOR_TTL || Boolean(p.idle),
             fresh: age < 2500,
+            ageMs: age,
+            media: p.media ? { live: p.media.live, mic: p.media.mic, cam: p.media.cam } : null,
           };
         });
       const cursorSignature = cursors
-        .map((c) => `${c.id}:${c.x.toFixed(1)}:${c.y.toFixed(1)}:${c.idle ? 1 : 0}:${c.tool ?? ''}`)
+        .map(
+          (c) =>
+            `${c.id}:${c.x.toFixed(1)}:${c.y.toFixed(1)}:${c.idle ? 1 : 0}:${c.tool ?? ''}:${
+              c.selection ?? ''
+            }:${c.pressed ? 1 : 0}:${c.vw ? Math.round(c.vw) : 0}x${c.vh ? Math.round(c.vh) : 0}:${
+              c.media?.live ? (c.media.cam ? 'c' : '') + (c.media.mic ? 'm' : '') : ''
+            }`,
+        )
         .join('|');
       if (cursorSignature !== lastCursorSignature) {
         lastCursorSignature = cursorSignature;
@@ -141,6 +170,34 @@ export function openRoomStream(code: string, user: SessionUser): RoomStream {
         events.push({
           event: 'chat',
           data: { message: lastMessage, messages: room.messages.slice(-40) },
+        });
+      }
+
+      const pending = await roomSignalsFor(code, user.id, signalSince);
+      const newSignals = pending.filter((signal) => !emittedSignals.has(signal.id));
+      if (newSignals.length) {
+        for (const signal of newSignals) {
+          emittedSignals.add(signal.id);
+          if (signal.at > signalSince) signalSince = signal.at;
+        }
+        // la mémoire du relais reste bornée (les signaux expirent en 45 s)
+        if (emittedSignals.size > 400) {
+          const keep = newSignals.map((signal) => signal.id);
+          emittedSignals.clear();
+          for (const id of keep) emittedSignals.add(id);
+        }
+        events.push({
+          event: 'signal',
+          data: {
+            signals: newSignals.map((signal) => ({
+              id: signal.id,
+              from: signal.from,
+              fromName: signal.fromName,
+              kind: signal.kind,
+              payload: signal.payload,
+              at: signal.at,
+            })),
+          },
         });
       }
 

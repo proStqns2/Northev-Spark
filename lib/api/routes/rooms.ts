@@ -20,6 +20,10 @@ import {
   touchRoom,
   unlockComponents,
   updateCursor,
+  patchCursor,
+  pushRoomSignal,
+  roomSignalsFor,
+  setRoomMedia,
 } from '@/lib/db/repo';
 import { publishRoomEvent } from '@/lib/db/supabase';
 import { circuitDocSchema, roomCreateSchema, roomJoinSchema, roomPatchSchema } from '@/lib/validation';
@@ -52,9 +56,30 @@ const cursorBodySchema = z.object({
   vh: z.number().finite().optional(),
   hover: z.string().max(64).nullable().optional(),
   tool: z.string().max(24).optional(),
+  /** bouton enfoncé (clic en cours) */
+  pressed: z.boolean().optional(),
+  /** dipôle sélectionné chez l'utilisateur */
+  selection: z.string().max(24).nullable().optional(),
+  /** style de pointeur annoncé par le client */
+  pointer: z.string().max(24).optional(),
   at: z.number().finite().optional(),
   activity: z.string().max(80).optional(),
   idle: z.boolean().optional(),
+});
+
+const mediaBodySchema = z.object({
+  live: z.boolean(),
+  mic: z.boolean().optional(),
+  cam: z.boolean().optional(),
+  session: z.string().max(40).optional(),
+});
+
+const signalKindSchema = z.enum(['hello', 'offer', 'answer', 'ice', 'bye']);
+
+const signalBodySchema = z.object({
+  to: z.string().max(64).nullable().optional(),
+  kind: signalKindSchema,
+  payload: z.unknown().optional(),
 });
 
 export interface RoomRouteOptions {
@@ -410,6 +435,26 @@ export const roomRoutes: ApiRoute[] = [
     if (!parsed.success) return fail(reply, 422, 'Curseur invalide.');
     const data = parsed.data;
 
+    // sans coordonnées, c'est une mise à jour partielle (sélection, outil) :
+    // la position du pair ne doit pas être effacée pour autant
+    const partial = data.idle !== true && data.x === undefined && data.y === undefined;
+    if (partial) {
+      const rev = await patchCursor(
+        code,
+        user,
+        {
+          ...(data.selection === undefined ? {} : { selection: data.selection ?? null }),
+          ...(data.pointer === undefined ? {} : { pointer: data.pointer }),
+          ...(data.hover === undefined ? {} : { hover: data.hover ?? null }),
+          ...(data.pressed === undefined ? {} : { pressed: data.pressed }),
+        },
+        data.activity,
+      );
+      if (rev === null) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({ ok: true, rev });
+    }
+
     const hidden =
       data.idle === true ||
       data.x === undefined ||
@@ -426,6 +471,9 @@ export const roomRoutes: ApiRoute[] = [
           vh: data.vh,
           hover: data.hover ?? null,
           tool: data.tool,
+          pressed: data.pressed,
+          selection: data.selection ?? null,
+          pointer: data.pointer,
           at: Date.now(),
         };
 
@@ -433,6 +481,61 @@ export const roomRoutes: ApiRoute[] = [
     if (presenceRev === null) return fail(reply, 404, 'Atelier introuvable ou fermé.');
     reply.header('Cache-Control', 'no-store');
     return reply.send({ ok: true, rev: presenceRev });
+  }],
+
+  // ---- état de la visio (caméra + micro) : volatil, jamais persisté
+  ['POST', '/api/rooms/:code/media', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = mediaBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'État visio invalide.');
+    const rev = await setRoomMedia(code, user, parsed.data);
+    if (rev === null) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ ok: true, rev });
+  }],
+
+  // ---- relève des signaux (repli quand le flux SSE n'est pas disponible)
+  ['GET', '/api/rooms/:code/signal', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const query = (request.query ?? {}) as Record<string, string>;
+    const since = Number(query.since ?? '0');
+    const signals = await roomSignalsFor(code, user.id, Number.isFinite(since) ? since : 0);
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({
+      signals: signals.map((signal) => ({
+        id: signal.id,
+        from: signal.from,
+        fromName: signal.fromName,
+        kind: signal.kind,
+        payload: signal.payload,
+        at: signal.at,
+      })),
+    });
+  }],
+
+  // ---- signalisation WebRTC relayée par le serveur d'atelier
+  ['POST', '/api/rooms/:code/signal', async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const user = await currentUser(request);
+    if (!user) return fail(reply, 401, 'Non authentifié.');
+    const parsed = signalBodySchema.safeParse(bodyOf(request));
+    if (!parsed.success) return fail(reply, 422, 'Signal invalide.');
+    // garde-fou : une offre SDP pèse quelques kilo-octets, pas plus
+    let size = 0;
+    try {
+      size = JSON.stringify(parsed.data.payload ?? null).length;
+    } catch {
+      return fail(reply, 422, 'Signal illisible.');
+    }
+    if (size > 24_000) return fail(reply, 413, 'Signal trop volumineux.');
+    const signal = await pushRoomSignal(code, user, parsed.data);
+    if (!signal) return fail(reply, 404, 'Atelier introuvable ou fermé.');
+    reply.header('Cache-Control', NO_STORE['Cache-Control']);
+    return reply.send({ ok: true, id: signal.id, at: signal.at });
   }]
 ];
 

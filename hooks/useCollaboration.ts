@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CircuitDoc } from '@/lib/engine/types';
 
+/** État caméra/micro d'un participant (visio d'atelier). */
+export interface LiveMedia {
+  live: boolean;
+  mic: boolean;
+  cam: boolean;
+  session?: string;
+}
+
 export interface LiveCursor {
   id: string;
   name: string;
@@ -14,6 +22,31 @@ export interface LiveCursor {
   tool?: string | null;
   idle: boolean;
   fresh?: boolean;
+  /** fenêtre visible du pair, en cellules de grille */
+  vx?: number | null;
+  vy?: number | null;
+  vw?: number | null;
+  vh?: number | null;
+  /** clic en cours (le pair trace, déplace…) */
+  pressed?: boolean;
+  /** dipôle sélectionné chez le pair */
+  selection?: string | null;
+  /** style de pointeur annoncé */
+  pointer?: string | null;
+  /** âge de la dernière mise à jour, en millisecondes */
+  ageMs?: number;
+  /** visio du pair, si elle est ouverte */
+  media?: LiveMedia | null;
+}
+
+/** Message de signalisation WebRTC relayé par le serveur d'atelier. */
+export interface LiveSignal {
+  id: string;
+  from: string;
+  fromName: string;
+  kind: 'hello' | 'offer' | 'answer' | 'ice' | 'bye';
+  payload: unknown;
+  at: number;
 }
 
 export interface LiveParticipant {
@@ -24,6 +57,7 @@ export interface LiveParticipant {
   activity?: string;
   idle?: boolean;
   cursor?: { x: number; y: number; tool?: string; hover?: string | null };
+  media?: LiveMedia;
 }
 
 export interface LiveMessage {
@@ -104,6 +138,10 @@ export function useCollaboration(options: {
   const [typing, setTyping] = useState<Array<{ id: string; name: string }>>([]);
   const [conflicts, setConflicts] = useState<LiveConflict[]>([]);
   const [saving, setSaving] = useState(false);
+  /** signaux WebRTC reçus, remis au consommateur puis consommés */
+  const [signals, setSignals] = useState<LiveSignal[]>([]);
+  const seenSignals = useRef<Set<string>>(new Set());
+  const signalSince = useRef(0);
 
   const sourceRef = useRef<EventSource | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -206,6 +244,77 @@ export function useCollaboration(options: {
     [code, flushCursor],
   );
 
+  /* ----------------------------------------------------- visio / signalisation */
+  /** Dépose un message de signalisation WebRTC (offre, réponse, candidat ICE). */
+  const sendSignal = useCallback(
+    async (
+      kind: LiveSignal['kind'],
+      to: string | null,
+      payload?: unknown,
+    ): Promise<boolean> => {
+      if (!code) return false;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetch(`/api/rooms/${code}/signal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, kind, payload: payload ?? null }),
+            keepalive: kind === 'bye',
+          });
+          if (response.ok) return true;
+          if (response.status !== 429 && response.status < 500) return false;
+        } catch {
+          /* on retente une fois : un aller-retour perdu bloque la négociation */
+        }
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return false;
+    },
+    [code],
+  );
+
+  /** Publie l'état caméra/micro (volatil : rien n'est enregistré). */
+  const publishMedia = useCallback(
+    async (media: { live: boolean; mic?: boolean; cam?: boolean; session?: string }) => {
+      if (!code) return false;
+      try {
+        const response = await fetch(`/api/rooms/${code}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(media),
+          keepalive: !media.live,
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    [code],
+  );
+
+  /** Marque les signaux comme lus (le consommateur les a traités). */
+  const consumeSignals = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    const done = new Set(ids);
+    setSignals((current) => current.filter((signal) => !done.has(signal.id)));
+  }, []);
+
+  const rememberSignals = useCallback((incoming: LiveSignal[] | undefined) => {
+    if (!incoming?.length) return;
+    setSignals((current) => {
+      const next = [...current];
+      for (const signal of incoming) {
+        if (seenSignals.current.has(signal.id)) continue;
+        seenSignals.current.add(signal.id);
+        next.push(signal);
+        if (signal.at > signalSince.current) signalSince.current = signal.at;
+      }
+      // la file reste courte : un signal a quelques secondes de pertinence
+      if (next.length > 120) return next.slice(-120);
+      return next.length === current.length ? current : next;
+    });
+  }, []);
+
   /* ------------------------------------------------------------ réception SSE */
   useEffect(() => {
     if (!enabled || !code) {
@@ -215,6 +324,10 @@ export function useCollaboration(options: {
     }
 
     let disposed = false;
+    // on ne rejoue pas les signaux d'une session précédente
+    signalSince.current = Date.now() - 1500;
+    seenSignals.current.clear();
+    setSignals([]);
 
     const startPolling = () => {
       if (pollRef.current) return;
@@ -239,6 +352,13 @@ export function useCollaboration(options: {
             }
           }
           if (payload.messages?.length) setMessages(payload.messages);
+          const relay = await fetch(`/api/rooms/${code}/signal?since=${signalSince.current}`, {
+            cache: 'no-store',
+          });
+          if (relay.ok) {
+            const relayed = (await relay.json()) as { signals?: LiveSignal[] };
+            rememberSignals(relayed.signals);
+          }
         } catch {
           setConnected(false);
         }
@@ -272,6 +392,11 @@ export function useCollaboration(options: {
     source.addEventListener('cursors', (event) => {
       const data = JSON.parse((event as MessageEvent).data) as { cursors: LiveCursor[] };
       pushCursors(data.cursors ?? []);
+    });
+
+    source.addEventListener('signal', (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as { signals?: LiveSignal[] };
+      rememberSignals(data.signals);
     });
 
     source.addEventListener('locks', (event) => {
@@ -655,7 +780,11 @@ export function useCollaboration(options: {
       typing,
       conflicts,
       saving,
+      signals,
       publishCursor,
+      sendSignal,
+      publishMedia,
+      consumeSignals,
       sendMessage,
       pushDoc,
       setBaseline,
@@ -684,7 +813,11 @@ export function useCollaboration(options: {
       typing,
       conflicts,
       saving,
+      signals,
       publishCursor,
+      sendSignal,
+      publishMedia,
+      consumeSignals,
       sendMessage,
       pushDoc,
       setBaseline,

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+// import explicite : les tests de rendu (tsx) n'appliquent pas le JSX automatique
+import React from 'react';
 import { PerfectCursor } from 'perfect-cursors';
 
 /**

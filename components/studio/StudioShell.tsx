@@ -315,8 +315,13 @@ export function StudioShell({
 
   useEffect(() => {
     if (!collaboration) return;
-    collaboration.publishCursor({ activity });
-  }, [activity, collaboration]);
+    // l'activité accompagne la sélection : les pairs voient le dipôle visé
+    collaboration.publishCursor({
+      activity,
+      selection: selected?.id ?? null,
+      pointer: tool.mode,
+    });
+  }, [activity, collaboration, selected, tool.mode]);
 
   const onCursorMove = useCallback(
     (payload: {

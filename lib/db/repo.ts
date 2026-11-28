@@ -3,7 +3,10 @@ import {
   CursorState,
   mutateVolatile,
   PresenceRecord,
+  RoomMedia,
+  RoomSignal,
   schedulePersist,
+  SignalKind,
   snapshot,
   StoredCircuit,
   StoredRoom,
@@ -486,10 +489,47 @@ export async function updateCursor(
       cursor: cursor ?? undefined,
       idle: cursor === null,
       activity: activity ?? previous?.activity,
+      // la bascule micro/caméra survit aux mouvements de curseur
+      media: previous?.media,
       seenAt: Date.now(),
     };
     room.presenceRev = (room.presenceRev ?? 0) + 1;
     schedulePersist(`room:${code}`, 8000);
+    return room.presenceRev;
+  });
+}
+
+/**
+ * Mise à jour **partielle** du curseur : sélection, outil, clic. La position
+ * connue est conservée — sinon publier une sélection ferait disparaître le
+ * curseur du pair jusqu'à son prochain mouvement de souris.
+ */
+export async function patchCursor(
+  code: string,
+  user: SessionUser,
+  patch: Partial<CursorState>,
+  activity?: string,
+): Promise<number | null> {
+  return mutateVolatile((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return null;
+    const previous = room.presence[user.id];
+    const cursor = previous?.cursor
+      ? { ...previous.cursor, ...patch, at: Date.now() }
+      : undefined;
+    room.presence[user.id] = {
+      id: user.id,
+      name: user.name,
+      avatar: user.avatar,
+      color: previous?.color ?? colorFor(user.id),
+      at: new Date().toISOString(),
+      cursor,
+      idle: cursor ? false : previous?.idle,
+      activity: activity ?? previous?.activity,
+      media: previous?.media,
+      seenAt: Date.now(),
+    };
+    room.presenceRev = (room.presenceRev ?? 0) + 1;
     return room.presenceRev;
   });
 }
@@ -514,6 +554,110 @@ export function livePresence(room: StoredRoom): PresenceRecord[] {
 }
 
 const PALETTE = ['#38e1e6', '#a479ff', '#ffc266', '#46e6a0', '#ff7d6b', '#4f9dff', '#ff79c6', '#facc15'];
+
+/* ------------------------------------------------------------------ visio */
+
+/** Durée de vie d'un signal WebRTC en mémoire : assez pour un aller-retour. */
+const SIGNAL_TTL = 45_000;
+/** Nombre maximal de signaux conservés par salle (boîte aux lettres bornée). */
+const SIGNAL_CAP = 240;
+
+function signalId(): string {
+  const random = globalThis.crypto?.randomUUID?.();
+  if (random) return `sig_${random.slice(0, 18)}`;
+  return `sig_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Publie l'état vidéo d'un participant (rejoint / quitte, micro, caméra).
+ * Volatil : rien n'est écrit sur disque, la visio ne laisse aucune trace.
+ */
+export async function setRoomMedia(
+  code: string,
+  user: SessionUser,
+  media: { live: boolean; mic?: boolean; cam?: boolean; session?: string },
+): Promise<number | null> {
+  return mutateVolatile((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return null;
+    const previous = room.presence[user.id];
+    const now = Date.now();
+    const record: PresenceRecord = {
+      id: user.id,
+      name: user.name,
+      avatar: user.avatar,
+      color: previous?.color ?? colorFor(user.id),
+      at: new Date().toISOString(),
+      cursor: previous?.cursor,
+      idle: previous?.idle,
+      activity: previous?.activity,
+      seenAt: now,
+    };
+    if (media.live) {
+      record.media = {
+        live: true,
+        mic: media.mic ?? previous?.media?.mic ?? true,
+        cam: media.cam ?? previous?.media?.cam ?? true,
+        session: media.session ?? previous?.media?.session ?? signalId(),
+        at: now,
+      };
+      record.activity = record.activity ?? 'en visio';
+    }
+    room.presence[user.id] = record;
+    room.presenceRev = (room.presenceRev ?? 0) + 1;
+    return room.presenceRev;
+  });
+}
+
+/** Dépose un message de signalisation pour un pair (ou pour tous). */
+export async function pushRoomSignal(
+  code: string,
+  user: SessionUser,
+  input: { to?: string | null; kind: SignalKind; payload?: unknown },
+): Promise<RoomSignal | null> {
+  return mutateVolatile((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return null;
+    const now = Date.now();
+    const kept = (room.signals ?? []).filter((signal) => now - signal.at < SIGNAL_TTL);
+    const signal: RoomSignal = {
+      id: signalId(),
+      from: user.id,
+      fromName: user.name,
+      to: input.to ?? null,
+      kind: input.kind,
+      payload: input.payload ?? null,
+      at: now,
+    };
+    kept.push(signal);
+    room.signals = kept.slice(-SIGNAL_CAP);
+    return signal;
+  });
+}
+
+/**
+ * Signaux destinés à `userId` postés depuis `sinceAt`. Le filtrage se fait ici
+ * pour qu'aucun message d'un pair ne parte vers un autre client.
+ */
+export async function roomSignalsFor(
+  code: string,
+  userId: string,
+  sinceAt = 0,
+): Promise<RoomSignal[]> {
+  return mutateVolatile((db) => {
+    const room = db.rooms.find((r) => r.code === code && !r.closed);
+    if (!room) return [];
+    const now = Date.now();
+    const kept = (room.signals ?? []).filter((signal) => now - signal.at < SIGNAL_TTL);
+    if (kept.length !== (room.signals ?? []).length) room.signals = kept;
+    return kept.filter(
+      (signal) =>
+        signal.at >= sinceAt &&
+        signal.from !== userId &&
+        (signal.to === null || signal.to === userId),
+    );
+  });
+}
 function colorFor(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 100003;

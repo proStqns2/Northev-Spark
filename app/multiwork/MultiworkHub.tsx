@@ -17,6 +17,8 @@ import {
   Loader2,
   LogOut,
   MessageSquare,
+  Mic,
+  MicOff,
   Plus,
   Radio,
   RotateCcw,
@@ -26,6 +28,8 @@ import {
   Timer,
   TriangleAlert,
   Users,
+  Video,
+  VideoOff,
   Wifi,
   WifiOff,
   X,
@@ -39,6 +43,8 @@ import {
   type LiveParticipant,
   type LiveVersion,
 } from '@/hooks/useCollaboration';
+import { useMediaCall } from '@/hooks/useMediaCall';
+import { CallPanel } from '@/components/multiwork/CallPanel';
 import { sanitizeDoc } from '@/lib/studio/doc';
 import { TileGlyph } from '@/components/marketing/TileGlyph';
 import { cn, timeAgo } from '@/lib/utils';
@@ -173,6 +179,28 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
   baselineRef.current = collaboration.setBaseline;
 
   const participants: LiveParticipant[] = collaboration.participants;
+
+  /* ------------------------------------------------------------------ visio */
+  const call = useMediaCall({
+    enabled: phase === 'joined' && Boolean(code),
+    localId: user.id,
+    localName: user.name,
+    participants,
+    signals: collaboration.signals,
+    sendSignal: collaboration.sendSignal,
+    publishMedia: collaboration.publishMedia,
+    consumeSignals: collaboration.consumeSignals,
+  });
+
+  // raccrocher en quittant l'atelier (sans laisser caméra ni micro ouverts)
+  const leaveCallRef = useRef(call.leave);
+  leaveCallRef.current = call.leave;
+  useEffect(() => {
+    if (phase !== 'joined') return;
+    return () => {
+      void leaveCallRef.current();
+    };
+  }, [phase]);
   interface ChatMessage {
     id: string;
     authorId: string;
@@ -404,6 +432,11 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
           </span>
           <span className="flex items-center gap-1 text-fg-mute">
             <Users size={10} /> {participants.length} en ligne
+            {call.joined || call.peerCount ? (
+              <span className="ml-1 flex items-center gap-0.5 text-spark-cyan">
+                · <Video size={9} /> {call.peerCount + (call.joined ? 1 : 0)}
+              </span>
+            ) : null}
           </span>
           {collaboration.typing.length ? (
             <span className="flex items-center gap-1 text-spark-cyan">
@@ -458,7 +491,7 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
         ) : null}
 
         <div className="flex">
-          <div className="min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
             <StudioShell
               mode="room"
               initialDoc={doc}
@@ -476,6 +509,11 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                 lastAuthor: collaboration.lastAuthor,
               }}
             />
+
+            {/* visio accessible sans ouvrir la colonne latérale : vignette repliée */}
+            <div className="absolute bottom-3 right-3 z-30">
+              <CallPanel call={call} variant="float" />
+            </div>
           </div>
 
           {chatOpen ? (
@@ -486,6 +524,10 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                   hôte : {participants.find((p) => p.id === ownerId)?.name ?? '—'}
                 </p>
               </div>
+              <div className="border-b border-line/60 p-2.5">
+                <CallPanel call={call} />
+              </div>
+
               <div className="space-y-1 border-b border-line/60 p-2.5">
                 <p className="label-xs">Participants</p>
                 {participants.length ? (
@@ -501,6 +543,16 @@ export function MultiworkHub({ user, initialCode, rooms, projects, templates }: 
                         {p.name}
                         {p.id === ownerId ? <span className="ml-1 text-[9px] text-spark-amber">hôte</span> : null}
                       </span>
+                      {p.media?.live ? (
+                        <span className="flex items-center gap-0.5 text-[9px] text-fg-mute">
+                          {p.media.cam ? <Video size={8} /> : <VideoOff size={8} />}
+                          {p.media.mic ? (
+                            <Mic size={8} className="text-spark-green" />
+                          ) : (
+                            <MicOff size={8} className="text-spark-coral" />
+                          )}
+                        </span>
+                      ) : null}
                       {collaboration.locks.filter((l) => l.userId === p.id).length ? (
                         <span className="flex items-center gap-0.5 rounded-full border border-spark-amber/40 bg-spark-amber/10 px-1 text-[9px] text-spark-amber">
                           <Lock size={8} />

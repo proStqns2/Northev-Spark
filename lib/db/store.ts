@@ -79,8 +79,30 @@ export interface CursorState {
   hover?: string | null;
   /** outil actif de l'utilisateur */
   tool?: string;
+  /** bouton du pointeur enfoncé (clic en cours de dessin) */
+  pressed?: boolean;
+  /** dipôle sélectionné par l'utilisateur, s'il y en a un */
+  selection?: string | null;
+  /** identifiant du pointeur (flèche, gomme…) pour styliser le curseur distant */
+  pointer?: string;
   /** horodatage côté client (ms) */
   at: number;
+}
+
+/**
+ * État de la visio d'un participant (caméra + micro).
+ * `session` change à chaque entrée en appel : il permet de distinguer une
+ * reconnexion d'une simple bascule micro/caméra.
+ */
+export interface RoomMedia {
+  /** participe à la visio */
+  live: boolean;
+  mic: boolean;
+  cam: boolean;
+  /** identifiant de session média (aléatoire, côté client) */
+  session?: string;
+  /** horodatage serveur de la dernière bascule (ms) */
+  at?: number;
 }
 
 export interface PresenceRecord {
@@ -94,8 +116,24 @@ export interface PresenceRecord {
   idle?: boolean;
   /** dernière action lisible : « déplace R₁ », « trace un fil »… */
   activity?: string;
+  /** visio en cours (caméra / micro) — volatil, jamais persisté */
+  media?: RoomMedia;
   /** horodatage serveur de la dernière mise à jour de présence */
   seenAt?: number;
+}
+
+export type SignalKind = 'hello' | 'offer' | 'answer' | 'ice' | 'bye';
+
+/** Message de signalisation WebRTC relayé par le serveur d'atelier. */
+export interface RoomSignal {
+  id: string;
+  from: string;
+  fromName: string;
+  /** destinataire ; `null` = diffusion à tous les autres participants */
+  to: string | null;
+  kind: SignalKind;
+  payload: unknown;
+  at: number;
 }
 
 export interface StoredRoom {
@@ -128,6 +166,12 @@ export interface StoredRoom {
   >;
   /** « X est en train d’écrire… » (volatil) */
   typing?: Record<string, { name: string; at: number }>;
+  /**
+   * Boîte aux lettres de signalisation WebRTC (offre / réponse / candidat ICE).
+   * Volatile : les messages vivent quelques secondes en mémoire et ne sont
+   * jamais écrits sur disque ni dans Supabase — aucune trace de la visio.
+   */
+  signals?: RoomSignal[];
   /** projet auquel l'atelier est rattaché */
   projectId?: string;
   /** numéro de la version des curseurs (ne force pas la persistance disque) */
