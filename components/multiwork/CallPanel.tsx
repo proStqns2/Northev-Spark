@@ -153,10 +153,19 @@ export function CallPanel({
 }) {
   const [open, setOpen] = useState(variant === 'sidebar');
   const [expanded, setExpanded] = useState(false);
+  /** l'utilisateur a replié la vignette : on ne la rouvre plus d'office */
+  const dismissed = useRef(false);
 
   useEffect(() => {
     if (variant === 'sidebar') setOpen(true);
   }, [variant]);
+
+  // dès qu'un pair apparaît, la vignette s'ouvre : on voit le montage *et* le
+  // visage de l'autre, sans quitter le plan
+  useEffect(() => {
+    if (variant !== 'float' || dismissed.current) return;
+    if (call.peerCount > 0) setOpen(true);
+  }, [call.peerCount, variant]);
 
   const isFloat = variant === 'float';
   const visible = isFloat ? open : true;
@@ -210,7 +219,10 @@ export function CallPanel({
           {isFloat ? (
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                dismissed.current = true;
+                setOpen(false);
+              }}
               className="rounded-md p-1 text-fg-mute transition hover:text-fg"
               title="Masquer"
               aria-label="Masquer la visio"
