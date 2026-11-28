@@ -62,11 +62,11 @@ halo), taille 80–140 %, et les quatre interrupteurs ci-dessus.
 ## 4. Vérifications
 
 ```bash
-npm test                          # 213 tests, dont media, sillage, calque de curseurs
-npm run check:call                # 13 vérifications HTTP de bout en bout (serveur démarré)
+npm test                          # 214 tests, dont média, sillage, calque de curseurs
+npm run check:call                # 14 vérifications HTTP de bout en bout (serveur démarré)
 ```
 
-`scripts/call-check.mjs` crée deux comptes réels, un atelier, publie l'état
+`scripts/call-check.mjs` (14 vérifications) crée deux comptes réels, un atelier, publie l'état
 caméra/micro puis vérifie que l'offre arrive **par le flux SSE** chez le bon
 destinataire, et que les garde-fous serveur tiennent (signal démesuré → 413,
 sans session → 401, type inconnu → 422).
