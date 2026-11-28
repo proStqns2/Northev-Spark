@@ -1,0 +1,4 @@
+# Pipeline d'analyse hors ligne (facultatif).
+# Le site n'en dépend pas : sans ces paquets, tout fonctionne sauf ce job.
+pyspark>=3.4,<4.1
+pyarrow>=10
